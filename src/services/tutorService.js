@@ -128,7 +128,7 @@ export const tutorService = {
             id,
             subject_name,
             category,
-            proficiency_level
+            proficiency_details
           )
         `)
         .eq('profile_visibility', true);
