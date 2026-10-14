@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 export default function VirtualClassroomScreen({
   session,
@@ -577,9 +579,23 @@ export default function VirtualClassroomScreen({
             <div className="space-y-2 pt-2">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setShowLeaveModal(false);
-                  if (onCompleteSession) onCompleteSession(activeSession);
+                  try {
+                    const { data: authData } = await supabase.auth.getUser();
+                    const mentorId = isMentor ? authData?.user?.id : (activeSession.mentor?.id || activeSession.tutor_id);
+                    if (activeSession.id && mentorId) {
+                      await sessionService.completeSession(activeSession.id, mentorId, studyNotes);
+                    }
+                  } catch (err) {
+                    console.error('[VirtualClassroomScreen] Error completing session:', err);
+                  }
+                  const completedData = {
+                    ...activeSession,
+                    status: 'completed',
+                    studyNotes: studyNotes || activeSession.studyNotes,
+                  };
+                  if (onCompleteSession) onCompleteSession(completedData);
                   else if (onLeave) onLeave();
                 }}
                 className="touch-target w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-3 rounded-2xl shadow-sm transition-all active:scale-[0.99] flex items-center justify-center gap-1.5"

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Student Sessions Screen (Tab 4)
@@ -19,6 +21,68 @@ export default function SessionsScreen({
   const [activeSegment, setActiveSegment] = useState('upcoming'); // 'upcoming' | 'completed'
   const [upcomingSubFilter, setUpcomingSubFilter] = useState('all'); // 'all' | 'confirmed' | 'pending'
   const [searchQuery, setSearchQuery] = useState('');
+  const [liveSessions, setLiveSessions] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLiveStudentSessions() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await sessionService.getStudentSessions(authData.user.id);
+          if (isMounted && data && data.length > 0) {
+            const mapped = data.map((s) => {
+              const tutorProf = s.tutor_profile || {};
+              const prof = tutorProf.profile || {};
+              const isFullPayment = (s.student_note || '').includes('Full Payment') || Number(s.payment_amount) >= Number(tutorProf.hourly_rate || 250);
+              
+              const startDt = new Date(s.scheduled_start);
+              const dateStr = startDt.toISOString().slice(0, 10);
+              const timeStr = `${startDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${new Date(s.scheduled_end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+
+              return {
+                id: s.id,
+                status: s.status,
+                mentor: {
+                  id: s.tutor_id,
+                  name: prof.full_name || 'Alex Santos',
+                  specialization: tutorProf.headline || 'Peer Mentor',
+                  rating: tutorProf.average_rating || 5.0,
+                  sessionsCount: 24,
+                  isVerified: true,
+                  rate: `₱${tutorProf.hourly_rate || 250}.00 / hr`,
+                  hourlyRate: Number(tutorProf.hourly_rate || 250),
+                  totalFee: Number(tutorProf.hourly_rate || 250),
+                  downPayment: Math.round(Number(tutorProf.hourly_rate || 250) * 0.5),
+                  remainingBalance: isFullPayment ? 0 : Math.round(Number(tutorProf.hourly_rate || 250) * 0.5),
+                  paymentStatus: s.payment_status,
+                  paymentChannel: 'Direct Pay',
+                  referenceNumber: s.payment_reference || 'N/A',
+                  avatarBg: 'bg-sky-600',
+                  initials: prof.full_name ? prof.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'AS',
+                },
+                date: dateStr,
+                time: timeStr,
+                duration: `${Math.round((s.duration_hours || 1) * 60)} min`,
+                format: s.meeting_type === 'online' ? 'Online' : 'In-person',
+                topic: s.session_topic,
+                submittedAt: new Date(s.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+                isFullPayment,
+                amountPaid: s.payment_amount,
+              };
+            });
+            setLiveSessions(mapped);
+          }
+        }
+      } catch (err) {
+        console.error('[SessionsScreen] Error loading student sessions:', err);
+      }
+    }
+    fetchLiveStudentSessions();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Default seed sessions if none passed
   const defaultSessions = [
@@ -109,7 +173,8 @@ export default function SessionsScreen({
     }
   ];
 
-  const allSessions = sessions && sessions.length > 0 ? sessions : defaultSessions;
+  const baseList = sessions && sessions.length > 0 ? sessions : defaultSessions;
+  const allSessions = liveSessions.length > 0 ? [...liveSessions, ...baseList] : baseList;
 
   // Format readable date
   const getReadableDate = (iso) => {
@@ -458,6 +523,20 @@ export default function SessionsScreen({
                     <div className="text-xs text-slate-700 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 leading-relaxed">
                       <span className="font-bold text-slate-900 mr-1.5">Topic:</span>
                       <span>{item.topic}</span>
+                    </div>
+
+                    {/* Payment Mode Indicator */}
+                    <div className="flex items-center justify-between text-[11px] pt-0.5">
+                      <span className="text-slate-500 font-medium">Payment Option:</span>
+                      {item.isFullPayment ? (
+                        <span className="font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          100% Full Payment
+                        </span>
+                      ) : (
+                        <span className="font-extrabold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                          50% Down Payment
+                        </span>
+                      )}
                     </div>
 
                     {/* Pending Notice if applicable */}

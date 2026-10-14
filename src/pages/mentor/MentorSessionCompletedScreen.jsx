@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Mentor Session Completed Screen (Tab 4 Sub-View)
@@ -58,9 +60,17 @@ export default function MentorSessionCompletedScreen({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     setIsEditingNotes(false);
     showToast('Post-session notes updated successfully!');
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id && activeSession.id) {
+        await sessionService.completeSession(activeSession.id, authData.user.id, notes);
+      }
+    } catch (err) {
+      console.error('[MentorSessionCompletedScreen] Error saving notes:', err);
+    }
   };
 
   return (
@@ -114,10 +124,10 @@ export default function MentorSessionCompletedScreen({
             <svg className="w-4 h-4 text-emerald-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
-            Direct Payment Settled:
+            Accreditation Ledger:
           </span>
           <span className="font-extrabold text-white bg-white/20 px-2 py-0.5 rounded-md">
-            ₱250.00 (Fully Paid)
+            +{(activeSession.duration_hours || 1.0).toFixed(1)} University Service Hours Credited
           </span>
         </div>
       </div>

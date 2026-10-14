@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { messageService } from '../../services/messageService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Chat Conversation Screen
  * Fully compliant with Section 6 of docs/student_flow_spec.md & docs/mobile_contents_guide.md.
  * Features:
- * - Real-time simulated message exchange with auto-scroll.
+ * - Real-time Supabase WebSocket message exchange with auto-scroll.
  * - Embedded Session Shortcut Card with direct navigation to session details.
  * - Quick conversation prompt chips (Icebreakers).
  * - Attachment simulated trigger.
@@ -19,19 +21,19 @@ export default function ChatConversationScreen({
 }) {
   const [messages, setMessages] = useState([
     {
-      id: 'msg-1',
+      id: 'msg-seed-1',
       sender: 'mentor',
       text: 'Hi Daniela! Are you ready for our upcoming session?',
       time: '6:35 PM'
     },
     {
-      id: 'msg-2',
+      id: 'msg-seed-2',
       sender: 'student',
       text: "Hi Alex! Yes, I prepared the code on JavaScript functions and closures we talked about.",
       time: '6:38 PM'
     },
     {
-      id: 'msg-3',
+      id: 'msg-seed-3',
       sender: 'mentor',
       text: "Awesome! Please have your code editor or GitHub repository ready. We'll walk through closures, parameters, and arrow syntax step-by-step.",
       time: '6:42 PM'
@@ -41,6 +43,8 @@ export default function ChatConversationScreen({
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [conversationId, setConversationId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -51,12 +55,72 @@ export default function ChatConversationScreen({
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // Connect to Supabase Conversation & Realtime Channel
+  useEffect(() => {
+    let unsubscribe = () => {};
+    let isMounted = true;
+
+    async function initChat() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) return;
+
+        const uid = authData.user.id;
+        if (isMounted) setCurrentUserId(uid);
+
+        // Partner mentor ID (Alex Santos seed ID or fallback)
+        const partnerId = mentor?.id || '22222222-2222-2222-2222-222222222222';
+
+        const { data: conv } = await messageService.getOrCreateConversation(uid, partnerId);
+        if (!isMounted || !conv) return;
+
+        setConversationId(conv.id);
+
+        // Fetch past messages from Supabase
+        const { data: dbMessages } = await messageService.getMessages(conv.id);
+        if (isMounted && dbMessages && dbMessages.length > 0) {
+          const mapped = dbMessages.map((m) => ({
+            id: m.id,
+            sender: m.sender_id === uid ? 'student' : 'mentor',
+            text: m.content,
+            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+          setMessages(mapped);
+        }
+
+        // Subscribe to live incoming messages
+        unsubscribe = messageService.subscribeToMessages(conv.id, (incoming) => {
+          if (!isMounted) return;
+          // Avoid duplicating optimistic message
+          if (incoming.sender_id !== uid) {
+            const incomingFormatted = {
+              id: incoming.id,
+              sender: 'mentor',
+              text: incoming.content,
+              time: new Date(incoming.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages((prev) => [...prev, incomingFormatted]);
+          }
+        });
+      } catch (err) {
+        console.error('[ChatConversationScreen] Error initializing chat:', err);
+      }
+    }
+
+    initChat();
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [mentor?.id]);
+
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSendMessage = (textToSend) => {
+  const handleSendMessage = async (textToSend) => {
     const text = (textToSend || inputMessage).trim();
     if (!text) return;
 
@@ -70,21 +134,22 @@ export default function ChatConversationScreen({
       time: formattedTime
     };
 
+    // Optimistic UI update
     setMessages((prev) => [...prev, newMsg]);
     setInputMessage('');
 
-    // Simulate realistic mentor response after a short delay
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      const mentorReply = {
-        id: `msg-${Date.now() + 1}`,
-        sender: 'mentor',
-        text: `Got your message! I've noted that down for our discussion. Looking forward to our session.`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages((prev) => [...prev, mentorReply]);
-    }, 1200);
+    // Persist to Supabase if conversation is established
+    if (conversationId && currentUserId) {
+      try {
+        await messageService.sendMessage({
+          conversationId,
+          senderId: currentUserId,
+          content: text,
+        });
+      } catch (err) {
+        console.error('[ChatConversationScreen] Send error:', err);
+      }
+    }
   };
 
   const quickPrompts = [

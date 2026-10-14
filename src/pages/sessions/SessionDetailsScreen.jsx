@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 export default function SessionDetailsScreen({
   session,
@@ -52,9 +54,19 @@ export default function SessionDetailsScreen({
     return iso;
   };
 
-  const handleConfirmCancel = () => {
+  const isFullPayment = Boolean(activeSession.isFullPayment || activeSession.remainingBalance === 0 || (activeSession.studentNote && activeSession.studentNote.includes('Full Payment')));
+
+  const handleConfirmCancel = async () => {
     setCurrentStatus('cancelled');
     setShowCancelModal(false);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id && activeSession.id) {
+        await sessionService.cancelSessionRequest(activeSession.id, authData.user.id);
+      }
+    } catch (err) {
+      console.error('[SessionDetailsScreen] Error cancelling session:', err);
+    }
     if (onCancelRequest) {
       onCancelRequest(activeSession.id);
     }
@@ -103,11 +115,11 @@ export default function SessionDetailsScreen({
               </span>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-              50% Down Payment Submitted
+              {isFullPayment ? '100% Full Payment Submitted' : '50% Down Payment Submitted'}
             </span>
           </div>
           <p className="text-xs text-amber-800 leading-relaxed font-medium">
-            Waiting for <span className="font-bold text-amber-950">{mentor.name}</span> to verify your 50% down payment (₱{(activeSession.downPayment || 125).toFixed(2)}) and accept your session request.
+            Waiting for <span className="font-bold text-amber-950">{mentor.name}</span> to verify your {isFullPayment ? 'full payment' : '50% down payment'} (₱{(activeSession.amountPaid || (isFullPayment ? activeSession.totalFee : activeSession.downPayment) || (isFullPayment ? 250 : 125)).toFixed(2)}) and accept your session request.
           </p>
           <div className="bg-white/80 rounded-xl p-2.5 border border-amber-200/60 flex items-center justify-between text-[11px]">
             <span className="text-slate-600 font-medium">Submitted Ref No.:</span>
@@ -273,14 +285,14 @@ export default function SessionDetailsScreen({
               <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
-              <span>50% Down Payment</span>
+              <span>{isFullPayment ? '100% Full Payment' : '50% Down Payment'}</span>
             </div>
             <div className="text-right">
               <span className="font-bold text-emerald-600">
-                ₱{(activeSession.downPayment || 125).toFixed(2)}
+                ₱{(activeSession.amountPaid || (isFullPayment ? activeSession.totalFee : activeSession.downPayment) || (isFullPayment ? 250 : 125)).toFixed(2)}
               </span>
               <span className="text-[10px] text-slate-400 block font-normal">
-                Via {activeSession.paymentMethod || 'GCash'}
+                Via {activeSession.paymentMethod || activeSession.paymentChannel || 'Direct Pay'}
               </span>
             </div>
           </div>
@@ -293,11 +305,11 @@ export default function SessionDetailsScreen({
               <span>Remaining Balance</span>
             </div>
             <div className="text-right">
-              <span className="font-bold text-amber-700">
-                ₱{(activeSession.remainingBalance || 125).toFixed(2)}
+              <span className={`font-bold ${isFullPayment ? 'text-emerald-700' : 'text-amber-700'}`}>
+                ₱{(isFullPayment ? 0 : (activeSession.remainingBalance || 125)).toFixed(2)}
               </span>
               <span className="text-[10px] text-slate-400 block font-normal">
-                Due upon completion
+                {isFullPayment ? 'Fully settled upfront' : 'Due upon completion'}
               </span>
             </div>
           </div>

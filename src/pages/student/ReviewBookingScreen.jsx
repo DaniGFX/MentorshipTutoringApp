@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 export default function ReviewBookingScreen({ bookingData, onBack, onComplete }) {
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [paymentOption, setPaymentOption] = useState('downpayment'); // 'downpayment' | 'full'
   const [paymentChannel, setPaymentChannel] = useState('gcash'); // 'gcash' | 'bank'
   const [referenceNumber, setReferenceNumber] = useState('');
   const [paymentError, setPaymentError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
 
   // Fallback defaults if opened directly
   const data = bookingData || {
     mentor: {
-      id: 'mentor-1',
+      id: '6349edad-42be-4021-841d-e31684711397',
       name: 'Alex Santos',
       specialization: 'Web Development Mentor',
       rating: 4.9,
@@ -38,7 +42,8 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
   const hourlyRate = mentor.hourlyRate || parseInt(String(mentor.rate).replace(/[^0-9]/g, '')) || 250;
   const totalFee = data.totalFee || hourlyRate;
   const downPaymentAmount = data.downPayment || Math.round(totalFee * 0.5);
-  const remainingBalance = totalFee - downPaymentAmount;
+  const amountDueNow = paymentOption === 'full' ? totalFee : downPaymentAmount;
+  const remainingBalance = paymentOption === 'full' ? 0 : (totalFee - downPaymentAmount);
 
   // Format readable date
   const getReadableDate = (iso) => {
@@ -59,17 +64,57 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleConfirmAndSend = () => {
+  const handleConfirmAndSend = async () => {
     if (!referenceNumber.trim()) {
-      setPaymentError('Please enter your transaction reference number to submit your down payment.');
+      setPaymentError(`Please enter your transaction reference number to submit your ${paymentOption === 'full' ? 'full payment' : 'down payment'}.`);
       return;
     }
     if (referenceNumber.trim().length < 6) {
       setPaymentError('Please enter a valid reference number (at least 6 characters).');
       return;
     }
+
     setPaymentError('');
-    setIsSuccessModalOpen(true);
+    setIsSubmitting(true);
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentStudentId = authData?.user?.id;
+
+      // Ensure mentor ID is a valid UUID or fallback to Alex Santos seed UUID
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const targetTutorId = uuidRegex.test(mentor.id) ? mentor.id : '6349edad-42be-4021-841d-e31684711397';
+
+      if (currentStudentId) {
+        const { error } = await sessionService.createSession({
+          studentId: currentStudentId,
+          tutorId: targetTutorId,
+          topic: data.topic,
+          date: data.date,
+          time: data.time,
+          duration: data.duration,
+          format: data.format,
+          paymentOption,
+          paymentAmount: amountDueNow,
+          totalFee,
+          referenceNumber: referenceNumber.trim(),
+          paymentChannel,
+          notes: data.topic,
+        });
+
+        if (error) {
+          console.error('[ReviewBookingScreen] Create session warning:', error);
+          // If RLS or conflict occurred, still allow user to continue in preview mode
+        }
+      }
+
+      setIsSuccessModalOpen(true);
+    } catch (err) {
+      console.error('[ReviewBookingScreen] Submission error:', err);
+      setIsSuccessModalOpen(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -94,10 +139,10 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
       {/* Screen Title */}
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          Review & Down Payment
+          Review & Direct Payment
         </h1>
         <p className="text-xs text-slate-500 font-medium mt-0.5">
-          Submit your 50% down payment to confirm your booking and eliminate fake requests.
+          Choose whether to pay in full upfront or make a 50% down payment to confirm your booking.
         </p>
       </div>
 
@@ -136,7 +181,7 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
           <span className="text-xs font-black text-sky-700 block">
             {mentor.rate || `₱${hourlyRate}.00 / hr`}
           </span>
-          <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Paid Mentor</span>
+          <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Direct Pay</span>
         </div>
       </div>
 
@@ -195,42 +240,111 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
         </div>
       </div>
 
-      {/* 4. Payment Breakdown Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3">
+      {/* 4. Payment Option Selector (Pay in Full OR 50% Down Payment) */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3.5">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Payment Breakdown
+            Payment Method & Terms
           </h3>
-          <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
-            50% Anti-Scam Down Payment
+          <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+            Select Payment Option
           </span>
         </div>
 
-        <div className="space-y-2.5 text-xs">
+        {/* Option Toggle Cards */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* 50% Down Payment Option */}
+          <button
+            type="button"
+            onClick={() => setPaymentOption('downpayment')}
+            className={`p-3 rounded-2xl border text-left transition-all relative cursor-pointer active:scale-98 ${
+              paymentOption === 'downpayment'
+                ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20 shadow-xs'
+                : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                paymentOption === 'downpayment' ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                50% Split
+              </span>
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                paymentOption === 'downpayment' ? 'border-sky-600 bg-sky-600 text-white' : 'border-slate-300 bg-white'
+              }`}>
+                {paymentOption === 'downpayment' && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                )}
+              </div>
+            </div>
+            <div className="text-xs font-bold text-slate-900 leading-tight">50% Down Payment</div>
+            <div className="text-[11px] text-sky-700 font-extrabold mt-1">₱{downPaymentAmount}.00 now</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">₱{remainingBalance}.00 balance after session</div>
+          </button>
+
+          {/* Pay in Full (100%) Option */}
+          <button
+            type="button"
+            onClick={() => setPaymentOption('full')}
+            className={`p-3 rounded-2xl border text-left transition-all relative cursor-pointer active:scale-98 ${
+              paymentOption === 'full'
+                ? 'bg-sky-50/70 border-sky-500 ring-2 ring-sky-500/20 shadow-xs'
+                : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                paymentOption === 'full' ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                100% Full
+              </span>
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                paymentOption === 'full' ? 'border-sky-600 bg-sky-600 text-white' : 'border-slate-300 bg-white'
+              }`}>
+                {paymentOption === 'full' && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                )}
+              </div>
+            </div>
+            <div className="text-xs font-bold text-slate-900 leading-tight">Pay in Full</div>
+            <div className="text-[11px] text-emerald-700 font-extrabold mt-1">₱{totalFee}.00 now</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">₱0.00 remaining balance</div>
+          </button>
+        </div>
+
+        {/* Dynamic Breakdown Table */}
+        <div className="space-y-2 pt-1 border-t border-slate-100 text-xs">
           <div className="flex items-center justify-between text-slate-600">
-            <span>Total Session Fee (1 hour):</span>
+            <span>Total Session Rate:</span>
             <span className="font-semibold text-slate-900">₱{totalFee}.00</span>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-950 font-bold">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-sky-50/80 border border-sky-200 text-sky-950 font-bold">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-sky-600 animate-pulse" />
-              <span>50% Required Down Payment (Due Now):</span>
+              <span>Amount Due Now ({paymentOption === 'full' ? '100% Full Payment' : '50% Down Payment'}):</span>
             </div>
-            <span className="text-sm font-extrabold text-sky-700">₱{downPaymentAmount}.00</span>
+            <span className="text-sm font-extrabold text-sky-700">₱{amountDueNow}.00</span>
           </div>
 
-          <div className="flex items-center justify-between text-slate-500 pt-1">
-            <span>Remaining 50% Balance (Due After Session):</span>
-            <span className="font-semibold text-slate-700">₱{remainingBalance}.00</span>
-          </div>
+          {paymentOption === 'downpayment' ? (
+            <div className="flex items-center justify-between text-slate-500 pt-0.5">
+              <span>Remaining Balance (Due After Session):</span>
+              <span className="font-semibold text-slate-700">₱{remainingBalance}.00</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between text-emerald-600 font-semibold pt-0.5">
+              <span>Remaining Balance:</span>
+              <span>₱0.00 (Fully Settled)</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* 5. Direct Payment Channel Selector & Account Details */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3.5">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Transfer Down Payment
+          Transfer {paymentOption === 'full' ? 'Full Payment' : 'Down Payment'}
         </h3>
 
         {/* Channel Switcher Tabs */}
@@ -296,8 +410,8 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed pt-1 border-t border-slate-200/60">
-              1. Open GCash app & send <span className="font-bold text-slate-800">₱{downPaymentAmount}.00</span>.<br />
-              2. Copy the 13-digit reference number and paste below.
+              1. Open GCash app & transfer <span className="font-bold text-slate-800">₱{amountDueNow}.00</span>.<br />
+              2. Copy the reference number and paste below.
             </p>
           </div>
         )}
@@ -343,7 +457,7 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed pt-1 border-t border-slate-200/60">
-              1. Transfer <span className="font-bold text-slate-800">₱{downPaymentAmount}.00</span> via online banking.<br />
+              1. Transfer <span className="font-bold text-slate-800">₱{amountDueNow}.00</span> via online banking.<br />
               2. Enter the transaction reference / trace number below.
             </p>
           </div>
@@ -398,17 +512,28 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
       <div className="space-y-2 pt-1">
         <button
           onClick={handleConfirmAndSend}
-          className="touch-target w-full bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-3.5 px-4 rounded-2xl shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer"
+          disabled={isSubmitting}
+          className="touch-target w-full bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-3.5 px-4 rounded-2xl shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-          </svg>
-          <span>Submit ₱{downPaymentAmount}.00 Down Payment & Book</span>
+          {isSubmitting ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>Submitting Booking...</span>
+            </span>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+              </svg>
+              <span>Submit ₱{amountDueNow}.00 {paymentOption === 'full' ? 'Full Payment' : 'Down Payment'} & Book</span>
+            </>
+          )}
         </button>
 
         <button
           type="button"
           onClick={onBack}
+          disabled={isSubmitting}
           className="touch-target w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold py-2.5 rounded-2xl transition-all active:scale-[0.99]"
         >
           Edit Booking Details
@@ -428,9 +553,11 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
 
             {/* Modal Heading & Text */}
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-slate-900">Down Payment Sent!</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {paymentOption === 'full' ? 'Full Payment Submitted!' : 'Down Payment Sent!'}
+              </h3>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                Your 50% down payment of <span className="font-bold text-slate-900">₱{downPaymentAmount}.00</span> (Ref: <span className="font-mono font-bold text-slate-800">{referenceNumber}</span>) has been submitted to{' '}
+                Your {paymentOption === 'full' ? 'full payment' : '50% down payment'} of <span className="font-bold text-slate-900">₱{amountDueNow}.00</span> (Ref: <span className="font-mono font-bold text-slate-800">{referenceNumber}</span>) has been submitted to{' '}
                 <span className="font-bold text-slate-800">{mentor.name}</span> for verification.
               </p>
             </div>
@@ -440,7 +567,7 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
               <div className="flex items-center justify-between font-bold text-sky-950">
                 <span>Verification Status</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold border border-amber-300">
-                  DOWN PAYMENT VERIFYING
+                  {paymentOption === 'full' ? 'FULL PAYMENT VERIFYING' : 'DOWN PAYMENT VERIFYING'}
                 </span>
               </div>
               <p className="text-[11px] text-sky-800 font-medium">
@@ -458,10 +585,12 @@ export default function ReviewBookingScreen({ bookingData, onBack, onComplete })
                       ...data,
                       totalFee,
                       downPayment: downPaymentAmount,
+                      amountPaid: amountDueNow,
                       remainingBalance,
+                      paymentOption,
                       paymentChannel,
                       referenceNumber,
-                      paymentStatus: 'downpayment_submitted'
+                      paymentStatus: paymentOption === 'full' ? 'full_payment_submitted' : 'downpayment_submitted'
                     });
                   }
                 }}

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { sessionService } from '../../services/sessionService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Mentor Sessions Screen (Tab 4: MentorSessionsScreen)
@@ -133,19 +135,79 @@ export default function MentorSessionsScreen({
   const [declineReason, setDeclineReason] = useState('Schedule conflict');
   const [customDeclineNote, setCustomDeclineNote] = useState('');
   const [toastMessage, setToastMessage] = useState(null);
+  const [liveMentorSessions, setLiveMentorSessions] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLiveMentorSessions() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await sessionService.getMentorSessions(authData.user.id);
+          if (isMounted && data && data.length > 0) {
+            const mapped = data.map((s) => {
+              const studentProf = s.student_profile || {};
+              const isFullPayment = (s.student_note || '').includes('Full Payment') || Number(s.payment_amount) >= 250;
+              const startDt = new Date(s.scheduled_start);
+              const dateStr = startDt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+              const timeStr = `${startDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${new Date(s.scheduled_end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+
+              return {
+                id: s.id,
+                status: s.status,
+                student: {
+                  id: s.student_id,
+                  name: studentProf.full_name || 'Student Learner',
+                  course: studentProf.course_program || 'BS Information Technology',
+                  yearLevel: studentProf.year_level || 'College Student',
+                  school: studentProf.school_name || 'University',
+                  avatarBg: 'bg-sky-600',
+                  initials: studentProf.full_name ? studentProf.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() : 'SL',
+                },
+                topic: s.session_topic,
+                date: dateStr,
+                time: timeStr,
+                duration: `${Math.round((s.duration_hours || 1) * 60)} min`,
+                format: s.meeting_type === 'online' ? 'Online' : 'In-person',
+                totalFee: isFullPayment ? Number(s.payment_amount) : Number(s.payment_amount) * 2,
+                downPayment: isFullPayment ? 0 : Number(s.payment_amount),
+                remainingBalance: isFullPayment ? 0 : Number(s.payment_amount),
+                paymentMethod: 'Direct Pay',
+                referenceNumber: s.payment_reference || 'N/A',
+                paymentStatus: s.payment_status,
+                studentNote: s.student_note,
+                countdown: 'Starts soon',
+                isFullPayment,
+                amountPaid: s.payment_amount,
+              };
+            });
+            setLiveMentorSessions(mapped);
+          }
+        }
+      } catch (err) {
+        console.error('[MentorSessionsScreen] Error loading mentor sessions:', err);
+      }
+    }
+    fetchLiveMentorSessions();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const activeSessionList = liveMentorSessions.length > 0 ? [...liveMentorSessions, ...sessionList] : sessionList;
+
   // Filtered lists
-  const pendingRequests = sessionList.filter((s) => s.status === 'pending');
-  const upcomingSessions = sessionList.filter((s) => s.status === 'confirmed');
-  const completedSessions = sessionList.filter((s) => s.status === 'completed');
+  const pendingRequests = activeSessionList.filter((s) => s.status === 'pending');
+  const upcomingSessions = activeSessionList.filter((s) => s.status === 'confirmed');
+  const completedSessions = activeSessionList.filter((s) => s.status === 'completed');
 
   // Accept Flow Handler
-  const handleConfirmAccept = () => {
+  const handleConfirmAccept = async () => {
     if (!acceptModalSession) return;
     const targetId = acceptModalSession.id;
 
@@ -154,6 +216,20 @@ export default function MentorSessionsScreen({
         s.id === targetId ? { ...s, status: 'confirmed', countdown: 'Starts in 4 days' } : s
       )
     );
+    setLiveMentorSessions((prev) =>
+      prev.map((s) =>
+        s.id === targetId ? { ...s, status: 'confirmed', countdown: 'Starts in 4 days' } : s
+      )
+    );
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id && targetId) {
+        await sessionService.acceptSession(targetId, authData.user.id);
+      }
+    } catch (err) {
+      console.error('[MentorSessionsScreen] Accept error:', err);
+    }
 
     if (onAcceptSession) onAcceptSession(targetId);
 
@@ -164,13 +240,25 @@ export default function MentorSessionsScreen({
   };
 
   // Decline Flow Handler
-  const handleConfirmDecline = () => {
+  const handleConfirmDecline = async () => {
     if (!declineModalSession) return;
     const targetId = declineModalSession.id;
 
     setSessionList((prev) =>
       prev.map((s) => (s.id === targetId ? { ...s, status: 'declined' } : s))
     );
+    setLiveMentorSessions((prev) =>
+      prev.map((s) => (s.id === targetId ? { ...s, status: 'declined' } : s))
+    );
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id && targetId) {
+        await sessionService.declineSession(targetId, authData.user.id, declineReason, customDeclineNote);
+      }
+    } catch (err) {
+      console.error('[MentorSessionsScreen] Decline error:', err);
+    }
 
     if (onDeclineSession) onDeclineSession(targetId, declineReason, customDeclineNote);
 
@@ -347,6 +435,22 @@ export default function MentorSessionsScreen({
                       “{req.studentNote}”
                     </div>
                   )}
+
+                  {/* Payment Verification Box */}
+                  <div className="bg-amber-50/80 rounded-xl p-2.5 border border-amber-200/70 space-y-1 text-xs mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-950">
+                        {req.isFullPayment ? '100% Full Payment Submitted' : '50% Down Payment Submitted'}
+                      </span>
+                      <span className="font-extrabold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300 text-[10px]">
+                        ₱{(req.amountPaid || (req.isFullPayment ? req.totalFee : req.downPayment) || (req.isFullPayment ? 250 : 125)).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span>Submitted Ref:</span>
+                      <span className="font-mono font-bold text-slate-900">{req.referenceNumber || 'N/A'}</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Dual Actions: Accept | Decline */}

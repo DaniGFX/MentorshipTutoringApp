@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { reviewService } from '../../services/reviewService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 export default function SessionCompletedScreen({
   session,
@@ -65,9 +67,32 @@ export default function SessionCompletedScreen({
     );
   };
 
-  const handleSubmitReview = (e) => {
+  const handleSubmitReview = async (e) => {
     e.preventDefault();
     setIsReviewSubmitted(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const studentId = authData?.user?.id;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const targetSessionId = uuidRegex.test(activeSession.id) ? activeSession.id : null;
+      const targetTutorId = uuidRegex.test(mentor.id) ? mentor.id : '6349edad-42be-4021-841d-e31684711397';
+
+      if (studentId && targetSessionId && targetTutorId) {
+        const fullComment = selectedTags.length > 0
+          ? `[Tags: ${selectedTags.join(', ')}] ${reviewComment}`
+          : reviewComment;
+
+        await reviewService.createReview({
+          sessionId: targetSessionId,
+          studentId,
+          tutorId: targetTutorId,
+          rating,
+          comment: fullComment,
+        });
+      }
+    } catch (err) {
+      console.error('[SessionCompletedScreen] Submit review error:', err);
+    }
   };
 
   const handleCopyNotes = () => {

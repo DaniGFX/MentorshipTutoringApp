@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { profileService } from '../../services/profileService.js';
 import { tutorService } from '../../services/tutorService.js';
+import { supportService } from '../../services/supportService.js';
 import { supabase } from '../../services/supabaseClient.js';
 
 export default function MentorProfileScreen({
@@ -197,15 +198,32 @@ export default function MentorProfileScreen({
     setExpertiseTags(expertiseTags.filter((t) => t !== tagToRemove));
   };
 
-  const handleSupportSubmit = (e) => {
+  const handleSupportSubmit = async (e) => {
     e.preventDefault();
     if (!supportForm.subject.trim() || !supportForm.message.trim()) {
       showToast('Please fill out all required fields.');
       return;
     }
+    const subj = supportForm.subject.trim();
+    const cat = supportForm.category || 'General';
+    const msg = supportForm.message.trim();
     setActiveModal(null);
     setSupportForm({ category: 'booking', subject: '', message: '' });
-    showToast('Support ticket #ML-8924 submitted! We will email you shortly.');
+    showToast('Support ticket submitted! Our help desk will assist you shortly.');
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        await supportService.createSupportTicket({
+          userId: authData.user.id,
+          subject: subj,
+          category: cat,
+          message: msg,
+        });
+      }
+    } catch (err) {
+      console.error('[MentorProfileScreen] Error submitting support ticket:', err);
+    }
   };
 
   const handlePasswordSubmit = (e) => {

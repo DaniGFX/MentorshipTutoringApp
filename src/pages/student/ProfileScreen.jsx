@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { profileService } from '../../services/profileService.js';
+import { supportService } from '../../services/supportService.js';
 import { supabase } from '../../services/supabaseClient.js';
 
 /**
@@ -140,12 +141,28 @@ export default function ProfileScreen({
   const [supportCategory, setSupportCategory] = useState('Account');
   const [supportMessage, setSupportMessage] = useState('');
 
-  const handleSendSupport = (e) => {
+  const handleSendSupport = async (e) => {
     e.preventDefault();
     if (!supportMessage.trim()) return;
+    const msg = supportMessage.trim();
+    const cat = supportCategory || 'General Question';
     setActiveModal(null);
     setSupportMessage('');
     showToast('Your support ticket has been submitted. Our team will get back to you shortly.');
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        await supportService.createSupportTicket({
+          userId: authData.user.id,
+          subject: `${cat} - Student Support Inquiry`,
+          category: cat,
+          message: msg,
+        });
+      }
+    } catch (err) {
+      console.error('[ProfileScreen] Error submitting support ticket:', err);
+    }
   };
 
   return (

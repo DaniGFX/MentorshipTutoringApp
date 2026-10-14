@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { messageService } from '../../services/messageService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Mentor Messages Screen (Tab 3: MentorMessagesScreen)
@@ -12,6 +14,50 @@ export default function MentorMessagesScreen({
   onViewStudents,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [liveConversations, setLiveConversations] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchMentorThreads() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await messageService.getConversations(authData.user.id);
+          if (isMounted && data && data.length > 0) {
+            const mapped = data.map((c) => ({
+              id: c.id,
+              student: {
+                id: c.partnerId,
+                name: c.partnerName,
+                course: c.partnerCourse || 'Student Learner',
+                school: c.partnerSchool || 'University',
+                avatarBg: 'bg-sky-600',
+                initials: c.partnerInitials,
+                isOnline: true,
+                isVerified: true,
+              },
+              lastMessage: 'Tap to open live message thread',
+              time: c.lastMessageAt
+                ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Just now',
+              unread: false,
+              unreadCount: 0,
+              hasUpcomingSession: true,
+              upcomingSessionTopic: 'Academic Mentoring & Tutoring',
+              sessionDate: 'Upcoming',
+            }));
+            setLiveConversations(mapped);
+          }
+        }
+      } catch (err) {
+        console.error('[MentorMessagesScreen] Error loading threads:', err);
+      }
+    }
+    fetchMentorThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Default seed conversations for peer mentor Alex Santos
   const defaultConversations = [
@@ -77,7 +123,8 @@ export default function MentorMessagesScreen({
     },
   ];
 
-  const threadList = conversations && conversations.length > 0 ? conversations : defaultConversations;
+  const baseList = conversations && conversations.length > 0 ? conversations : defaultConversations;
+  const threadList = liveConversations.length > 0 ? [...liveConversations, ...baseList] : baseList;
 
   const filteredThreads = threadList.filter((thread) => {
     if (!searchQuery.trim()) return true;

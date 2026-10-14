@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supportService } from '../../services/supportService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Mentor Notification Settings Screen
@@ -26,6 +28,33 @@ export default function MentorNotificationSettingsScreen({ onBack }) {
   });
 
   const [toastMessage, setToastMessage] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPreferences() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await supportService.getNotificationPreferences(authData.user.id);
+          if (isMounted && data) {
+            setSettings((prev) => ({
+              ...prev,
+              sessionReminders: data.session_reminders ?? true,
+              newMessages: data.chat_messages ?? true,
+              sessionUpdates: data.booking_updates ?? true,
+              emailNotifications: data.email_notifications ?? false,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('[MentorNotificationSettingsScreen] Error loading preferences:', err);
+      }
+    }
+    loadPreferences();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -55,8 +84,21 @@ export default function MentorNotificationSettingsScreen({ onBack }) {
     });
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     showToast('Settings Saved — Your notification preferences have been updated.');
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user) {
+        await supportService.updateNotificationPreferences(authData.user.id, {
+          sessionReminders: settings.sessionReminders,
+          chatMessages: settings.newMessages,
+          bookingUpdates: settings.sessionUpdates,
+          emailNotifications: settings.emailNotifications,
+        });
+      }
+    } catch (err) {
+      console.error('[MentorNotificationSettingsScreen] Error saving preferences:', err);
+    }
     setTimeout(() => {
       if (onBack) onBack();
     }, 1200);

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { messageService } from '../../services/messageService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Student Messages Screen (Tab 3)
@@ -12,6 +14,51 @@ export default function MessagesScreen({
   onFindMentor
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [liveConversations, setLiveConversations] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchThreads() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await messageService.getConversations(authData.user.id);
+          if (isMounted && data && data.length > 0) {
+            const mapped = data.map((c) => ({
+              id: c.id,
+              mentor: {
+                id: c.partnerId,
+                name: c.partnerName,
+                specialization: c.partnerCourse || 'Peer Mentor',
+                rating: 5.0,
+                sessionsCount: 1,
+                isVerified: true,
+                isOnline: true,
+                rate: '₱200.00 / hr',
+                avatarBg: 'bg-sky-600',
+                initials: c.partnerInitials,
+              },
+              lastMessage: 'Tap to view live message thread',
+              time: c.lastMessageAt
+                ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Just now',
+              unread: false,
+              unreadCount: 0,
+              hasUpcomingSession: true,
+              upcomingSessionTopic: 'Academic Mentoring & Tutoring',
+            }));
+            setLiveConversations(mapped);
+          }
+        }
+      } catch (err) {
+        console.error('[MessagesScreen] Error loading threads:', err);
+      }
+    }
+    fetchThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Default seed conversations
   const defaultConversations = [
@@ -80,7 +127,8 @@ export default function MessagesScreen({
     }
   ];
 
-  const threadList = conversations && conversations.length > 0 ? conversations : defaultConversations;
+  const baseList = conversations && conversations.length > 0 ? conversations : defaultConversations;
+  const threadList = liveConversations.length > 0 ? [...liveConversations, ...baseList] : baseList;
 
   const filteredThreads = threadList.filter((thread) => {
     if (!searchQuery.trim()) return true;

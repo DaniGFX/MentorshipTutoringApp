@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { messageService } from '../../services/messageService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Mentor Chat Conversation Screen (Tab 3 Sub-View)
  * Follows the clean, organized layout of ChatConversationScreen.jsx.
  * Features:
- * - Real-time simulated message exchange with auto-scroll and typing indicator.
+ * - Real-time Supabase WebSocket message exchange with auto-scroll and fallback simulation.
  * - Embedded Upcoming Session Shortcut Card with direct navigation to session details.
  * - Quick mentor response prompt chips.
  * - Direct shortcut to view student profile.
@@ -73,6 +75,8 @@ export default function MentorChatScreen({
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [conversationId, setConversationId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -83,12 +87,71 @@ export default function MentorChatScreen({
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // Connect to Supabase Conversation & Realtime Channel
+  useEffect(() => {
+    let unsubscribe = () => {};
+    let isMounted = true;
+
+    async function initChat() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) return;
+
+        const uid = authData.user.id;
+        if (isMounted) setCurrentUserId(uid);
+
+        // Partner student ID (fallback to Daniela Gonzales seed ID if not UUID)
+        const partnerId = targetStudent?.id || '11111111-1111-1111-1111-111111111111';
+
+        const { data: conv } = await messageService.getOrCreateConversation(partnerId, uid);
+        if (!isMounted || !conv) return;
+
+        setConversationId(conv.id);
+
+        // Fetch past messages from Supabase
+        const { data: dbMessages } = await messageService.getMessages(conv.id);
+        if (isMounted && dbMessages && dbMessages.length > 0) {
+          const mapped = dbMessages.map((m) => ({
+            id: m.id,
+            sender: m.sender_id === uid ? 'mentor' : 'student',
+            text: m.content,
+            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+          setMessages(mapped);
+        }
+
+        // Subscribe to live incoming messages
+        unsubscribe = messageService.subscribeToMessages(conv.id, (incoming) => {
+          if (!isMounted) return;
+          if (incoming.sender_id !== uid) {
+            const incomingFormatted = {
+              id: incoming.id,
+              sender: 'student',
+              text: incoming.content,
+              time: new Date(incoming.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages((prev) => [...prev, incomingFormatted]);
+          }
+        });
+      } catch (err) {
+        console.error('[MentorChatScreen] Error initializing chat:', err);
+      }
+    }
+
+    initChat();
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [targetStudent?.id]);
+
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSendMessage = (textToSend) => {
+  const handleSendMessage = async (textToSend) => {
     const text = (textToSend || inputMessage).trim();
     if (!text) return;
 
@@ -105,31 +168,44 @@ export default function MentorChatScreen({
     setMessages((prev) => [...prev, newMsg]);
     setInputMessage('');
 
-    // Simulate realistic student reply after a short delay
-    setTimeout(() => {
-      setIsTyping(true);
+    // Persist to Supabase if conversation is established
+    if (conversationId && currentUserId) {
+      try {
+        await messageService.sendMessage({
+          conversationId,
+          senderId: currentUserId,
+          content: text,
+        });
+      } catch (err) {
+        console.error('[MentorChatScreen] Send error:', err);
+      }
+    } else {
+      // Simulate fallback student reply after a short delay if offline/mock thread
       setTimeout(() => {
-        setIsTyping(false);
-        const replies = [
-          "Got it! I will review the notes and have the GitHub repository ready.",
-          "Thank you, Alex! That makes a lot more sense now.",
-          "Awesome, looking forward to the hands-on walkthrough!",
-          "Understood! I'll prepare my questions beforehand.",
-        ];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setIsTyping(true);
+        setTimeout(() => {
+          setIsTyping(false);
+          const replies = [
+            "Got it! I will review the notes and have the GitHub repository ready.",
+            "Thank you, Alex! That makes a lot more sense now.",
+            "Awesome, looking forward to the hands-on walkthrough!",
+            "Understood! I'll prepare my questions beforehand.",
+          ];
+          const randomReply = replies[Math.floor(Math.random() * replies.length)];
+          const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-student`,
-            sender: 'student',
-            text: randomReply,
-            time: replyTime,
-          },
-        ]);
-      }, 1400);
-    }, 800);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-student`,
+              sender: 'student',
+              text: randomReply,
+              time: replyTime,
+            },
+          ]);
+        }, 1400);
+      }, 800);
+    }
   };
 
   const quickResponses = [

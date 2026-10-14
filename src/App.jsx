@@ -415,7 +415,7 @@ export default function App() {
             onComplete={(newBooking) => {
               if (newBooking) {
                 const createdSession = {
-                  id: `session-req-${Date.now().toString().slice(-4)}`,
+                  id: newBooking.id || `session-req-${Date.now().toString().slice(-4)}`,
                   status: 'pending',
                   mentor: newBooking.mentor,
                   date: newBooking.date,
@@ -423,7 +423,14 @@ export default function App() {
                   duration: newBooking.duration,
                   format: newBooking.format,
                   topic: newBooking.topic,
-                  submittedAt: 'Just now'
+                  submittedAt: 'Just now',
+                  isFullPayment: newBooking.paymentOption === 'full',
+                  amountPaid: newBooking.amountPaid,
+                  totalFee: newBooking.totalFee,
+                  downPayment: newBooking.downPayment,
+                  remainingBalance: newBooking.remainingBalance,
+                  referenceNumber: newBooking.referenceNumber,
+                  paymentMethod: newBooking.paymentChannel || 'GCash',
                 };
                 setStudentSessions((prev) => [createdSession, ...prev]);
                 setViewingSessionDetails(createdSession);
