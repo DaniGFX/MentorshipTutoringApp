@@ -5,6 +5,7 @@ import { supportService } from '../../services/supportService.js';
 import { supabase } from '../../services/supabaseClient.js';
 
 export default function MentorProfileScreen({
+  currentUserProfile,
   onOpenAvailability,
   onOpenNotifications,
   onViewStudents,
@@ -12,31 +13,25 @@ export default function MentorProfileScreen({
   onLogout,
 }) {
   // State for profile data
-  const [profile, setProfile] = useState({
-    name: 'Alex Santos',
-    tagline: 'Senior CS Student | Web & Database Specialist',
-    university: 'De La Salle University',
-    program: 'BS Computer Science — 4th Year',
-    email: 'mentor@mentorlink.ph',
-    phone: '+63 917 555 0192',
-    bio: 'Dedicated peer tutor helping students master programming logic, database normalization, and frontend user interfaces in React.',
-    rating: 4.95,
-    reviewCount: 22,
-    sessionCount: 42,
-    totalEarnings: 8400,
-    hourlyRate: 200,
-    gcashNumber: '0917-555-0192',
-    bankName: 'BDO Unibank',
-    bankAccountNumber: '1092-8834-5512',
-  });
+  const [profile, setProfile] = useState(() => ({
+    name: currentUserProfile?.full_name || '',
+    tagline: '',
+    university: currentUserProfile?.school_name || '',
+    program: currentUserProfile?.course_program || '',
+    email: currentUserProfile?.email || '',
+    phone: '',
+    bio: currentUserProfile?.bio || '',
+    rating: 5.0,
+    reviewCount: 0,
+    sessionCount: 0,
+    totalEarnings: 0,
+    hourlyRate: 0,
+    gcashNumber: '',
+    bankName: '',
+    bankAccountNumber: '',
+  }));
 
-  const [expertiseTags, setExpertiseTags] = useState([
-    'Web Development',
-    'JavaScript',
-    'React.js',
-    'Database Systems & SQL',
-    'Data Structures & Algorithms',
-  ]);
+  const [expertiseTags, setExpertiseTags] = useState([]);
 
   // Load live mentor profile from Supabase
   useEffect(() => {
@@ -50,15 +45,15 @@ export default function MentorProfileScreen({
 
           if (isMounted) {
             const updated = {
-              name: pData?.full_name || 'Alex Santos',
-              tagline: tData?.headline || 'Senior CS Student | Web & Database Specialist',
-              university: pData?.school_name || 'De La Salle University',
-              program: pData?.course_program || 'BS Computer Science',
-              email: pData?.email || authData.user.email || 'mentor@mentorlink.ph',
-              bio: tData?.bio_experience || pData?.bio || 'Dedicated peer tutor helping students master programming logic.',
-              rating: parseFloat(tData?.average_rating) || 4.95,
-              sessionCount: tData?.completed_sessions_count || 42,
-              hourlyRate: parseFloat(tData?.hourly_rate) || 200,
+              name: pData?.full_name || authData.user.email?.split('@')[0] || 'Peer Mentor',
+              tagline: tData?.headline || '',
+              university: pData?.school_name || '',
+              program: pData?.course_program || '',
+              email: pData?.email || authData.user.email || '',
+              bio: tData?.bio_experience || pData?.bio || '',
+              rating: parseFloat(tData?.average_rating) || 5.0,
+              sessionCount: tData?.completed_sessions_count || 0,
+              hourlyRate: parseFloat(tData?.hourly_rate) || 0,
             };
             setProfile((prev) => ({ ...prev, ...updated }));
             setEditForm((prev) => ({ ...prev, ...updated }));

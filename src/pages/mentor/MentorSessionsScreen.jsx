@@ -24,110 +24,8 @@ export default function MentorSessionsScreen({
 }) {
   const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'upcoming' | 'completed'
 
-  // Default seed sessions for mentor Alex Santos
-  const [sessionList, setSessionList] = useState(
-    sessions || [
-      {
-        id: 'sess-req-101',
-        status: 'pending',
-        student: {
-          id: 'std-1',
-          name: 'Daniela Gonzales',
-          course: 'BS Information Technology',
-          yearLevel: '3rd Year Student',
-          school: 'Bestlink College of the Philippines',
-          avatarBg: 'bg-sky-600',
-          initials: 'DG'
-        },
-        topic: 'JavaScript Functions, parameters, and return values',
-        date: 'Sept 25, 2026',
-        time: '7:00 PM – 8:00 PM',
-        duration: '60 min',
-        format: 'Online',
-        totalFee: 250,
-        downPayment: 125,
-        remainingBalance: 125,
-        paymentMethod: 'GCash',
-        referenceNumber: 'MP-8921-7734',
-        paymentStatus: 'downpayment_submitted',
-        studentNote: "I'd like to understand JavaScript functions, especially parameters and return values.",
-        countdown: 'Starts in 4 days'
-      },
-      {
-        id: 'sess-conf-201',
-        status: 'confirmed',
-        student: {
-          id: 'std-2',
-          name: 'Mark Reyes',
-          course: 'BS Computer Science',
-          yearLevel: '2nd Year Student',
-          school: 'Bestlink College of the Philippines',
-          avatarBg: 'bg-teal-600',
-          initials: 'MR'
-        },
-        topic: 'React Components, Props, and State Management',
-        date: 'Sept 27, 2026',
-        time: '6:00 PM – 7:00 PM',
-        duration: '60 min',
-        format: 'Online',
-        totalFee: 250,
-        downPayment: 125,
-        remainingBalance: 125,
-        paymentMethod: 'BDO',
-        referenceNumber: 'BDO-0921-3312',
-        paymentStatus: 'downpayment_verified',
-        studentNote: 'Need assistance organizing component state and passing props efficiently.',
-        countdown: 'Starts in 6 days'
-      },
-      {
-        id: 'sess-conf-202',
-        status: 'confirmed',
-        student: {
-          id: 'std-1',
-          name: 'Daniela Gonzales',
-          course: 'BS Information Technology',
-          yearLevel: '3rd Year Student',
-          school: 'Bestlink College of the Philippines',
-          avatarBg: 'bg-sky-600',
-          initials: 'DG'
-        },
-        topic: 'JavaScript Closures and Asynchronous Promises',
-        date: 'Oct 02, 2026',
-        time: '7:00 PM – 8:00 PM',
-        duration: '60 min',
-        format: 'Online',
-        totalFee: 250,
-        downPayment: 125,
-        remainingBalance: 125,
-        paymentMethod: 'GCash',
-        referenceNumber: 'MP-8921-7734',
-        paymentStatus: 'downpayment_verified',
-        studentNote: 'Following up on our function session with practical async/await examples.',
-        countdown: 'Starts in 11 days'
-      },
-      {
-        id: 'sess-comp-301',
-        status: 'completed',
-        student: {
-          id: 'std-3',
-          name: 'Sofia Garcia',
-          course: 'BS Information Technology',
-          yearLevel: '4th Year Student',
-          school: 'Bestlink College of the Philippines',
-          avatarBg: 'bg-purple-600',
-          initials: 'SG'
-        },
-        topic: 'Mobile-First Wireframing and Auto Layout in Figma',
-        date: 'Sept 18, 2026',
-        time: '5:00 PM – 6:00 PM',
-        duration: '60 min',
-        format: 'Online',
-        totalPaid: '₱250.00',
-        paymentStatus: 'fully_paid',
-        notes: 'Reviewed mobile UI components, 8pt spatial grids, and autolayout responsiveness in Figma.'
-      }
-    ]
-  );
+  // Mentor sessions list
+  const [sessionList, setSessionList] = useState(sessions || []);
 
   // Modal States
   const [acceptModalSession, setAcceptModalSession] = useState(null);
@@ -199,7 +97,7 @@ export default function MentorSessionsScreen({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const activeSessionList = liveMentorSessions.length > 0 ? [...liveMentorSessions, ...sessionList] : sessionList;
+  const activeSessionList = liveMentorSessions.length > 0 ? liveMentorSessions : (sessionList.length > 0 ? sessionList : (sessions || []));
 
   // Filtered lists
   const pendingRequests = activeSessionList.filter((s) => s.status === 'pending');

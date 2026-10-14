@@ -1,75 +1,48 @@
 import React, { useState } from 'react';
+import { sessionService } from '../../services/sessionService.js';
 
-export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, onOpenNotifications }) {
+export default function MentorDashboard({
+  currentUserProfile,
+  sessions = [],
+  onNavigateTab,
+  onViewStudentProfile,
+  onOpenNotifications
+}) {
   // Mentor Availability Toggle
   const [isAcceptingRequests, setIsAcceptingRequests] = useState(true);
 
-  // Active Pending Requests State
-  const [pendingRequests, setPendingRequests] = useState([
-    {
-      id: 'req-101',
-      studentName: 'Daniela Gonzales',
-      course: 'BS Information Technology',
-      yearLevel: '3rd Year',
-      topic: 'JavaScript Functions',
-      date: 'Sept 25, 2026',
-      time: '7:00 PM – 8:00 PM',
-      format: 'Online',
-      totalFee: 250,
-      downPayment: 125,
-      remainingBalance: 125,
-      paymentMethod: 'GCash',
-      referenceNumber: 'MP-8921-7734',
-      paymentStatus: 'downpayment_submitted',
-      initials: 'DG',
-      avatarBg: 'bg-sky-500'
-    }
-  ]);
+  // Derive sessions from dynamic props
+  const pendingRequests = (sessions || []).filter((s) => s.status === 'pending');
+  const upcomingSessions = (sessions || []).filter((s) => s.status === 'confirmed');
+  const completedSessions = (sessions || []).filter((s) => s.status === 'completed');
 
-  // Confirmed Upcoming Sessions State
-  const [upcomingSessions, setUpcomingSessions] = useState([
-    {
-      id: 'sess-201',
-      studentName: 'Daniela Gonzales',
-      course: 'BS Information Technology',
-      topic: 'JavaScript Functions',
-      date: 'Sept 25, 2026',
-      time: '7:00 PM – 8:00 PM',
-      format: 'Online',
-      totalFee: 250,
-      downPayment: 125,
-      remainingBalance: 125,
-      paymentMethod: 'GCash',
-      referenceNumber: 'MP-8921-7734',
-      paymentStatus: 'downpayment_verified',
-      countdown: 'Starts in 2 days',
-      isJoinable: false,
-      initials: 'DG',
-      avatarBg: 'bg-sky-500'
-    }
-  ]);
+  // Compute today's sessions
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todaySessionsCount = upcomingSessions.filter((s) => s.date === todayIso).length;
 
-  // Active Students State
-  const [students] = useState([
-    {
-      id: 'std-1',
-      name: 'Daniela Gonzales',
-      course: 'BS Information Technology',
-      yearLevel: '3rd Year',
-      sessionsCount: 3,
-      initials: 'DG',
-      avatarBg: 'bg-sky-500'
-    },
-    {
-      id: 'std-2',
-      name: 'Mark Reyes',
-      course: 'BS Computer Science',
-      yearLevel: '2nd Year',
-      sessionsCount: 5,
-      initials: 'MR',
-      avatarBg: 'bg-teal-500'
+  // Compute total earnings from completed sessions
+  const totalEarnings = completedSessions.reduce(
+    (sum, s) => sum + (parseFloat(s.totalFee || s.total_amount) || 0),
+    0
+  );
+
+  // Extract unique students from sessions
+  const studentsMap = new Map();
+  (sessions || []).forEach((s) => {
+    const studentId = s.student?.id || s.studentName;
+    if (studentId && !studentsMap.has(studentId)) {
+      studentsMap.set(studentId, {
+        id: studentId,
+        name: s.student?.name || s.studentName || 'Student Learner',
+        course: s.student?.course || s.course || 'College Student',
+        yearLevel: s.student?.yearLevel || s.yearLevel || '',
+        sessionsCount: (sessions || []).filter((item) => (item.student?.id || item.studentName) === studentId && item.status === 'completed').length,
+        initials: s.student?.initials || s.initials || 'SL',
+        avatarBg: s.student?.avatarBg || s.avatarBg || 'bg-sky-500'
+      });
     }
-  ]);
+  });
+  const students = Array.from(studentsMap.values());
 
   // Modals & Interaction States
   const [acceptModalRequest, setAcceptModalRequest] = useState(null);
@@ -86,59 +59,41 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
   };
 
   // Handlers for Request Acceptance
-  const handleConfirmAccept = () => {
+  const handleConfirmAccept = async () => {
     if (!acceptModalRequest) return;
     const req = acceptModalRequest;
-
-    // Remove from pending
-    setPendingRequests((prev) => prev.filter((item) => item.id !== req.id));
-
-    // Add to upcoming
-    setUpcomingSessions((prev) => [
-      {
-        id: `sess-${Date.now()}`,
-        studentName: req.studentName,
-        course: req.course,
-        topic: req.topic,
-        date: req.date,
-        time: req.time,
-        format: req.format,
-        countdown: 'Starts in 2 days',
-        isJoinable: false,
-        initials: req.initials,
-        avatarBg: req.avatarBg
-      },
-      ...prev
-    ]);
-
-    setAcceptModalRequest(null);
-    showToast(`Session Confirmed! Your mentoring session with ${req.studentName} has been confirmed.`);
+    try {
+      if (currentUserProfile?.id) {
+        await sessionService.acceptSession(req.id, currentUserProfile.id);
+      }
+      showToast(`Session Confirmed! Mentoring session with ${req.studentName} is confirmed.`);
+    } catch (err) {
+      console.error('[MentorDashboard] Accept session error:', err);
+      showToast('Session updated.');
+    } finally {
+      setAcceptModalRequest(null);
+    }
   };
 
   // Handlers for Request Decline
-  const handleConfirmDecline = () => {
+  const handleConfirmDecline = async () => {
     if (!declineModalRequest) return;
     const req = declineModalRequest;
-
-    setPendingRequests((prev) => prev.filter((item) => item.id !== req.id));
-    setDeclineModalRequest(null);
-    showToast(`Session request with ${req.studentName} has been declined.`);
+    try {
+      if (currentUserProfile?.id) {
+        await sessionService.declineSession(req.id, currentUserProfile.id, declineReason);
+      }
+      showToast(`Session request with ${req.studentName} has been declined.`);
+    } catch (err) {
+      console.error('[MentorDashboard] Decline session error:', err);
+      showToast('Session request updated.');
+    } finally {
+      setDeclineModalRequest(null);
+    }
   };
 
-  // Toggle Join Session Simulation (for interactive testing)
-  const toggleJoinableSession = (sessionId) => {
-    setUpcomingSessions((prev) =>
-      prev.map((s) =>
-        s.id === sessionId
-          ? {
-              ...s,
-              isJoinable: !s.isJoinable,
-              countdown: !s.isJoinable ? 'Starting Now · Unlocked' : 'Starts in 2 days'
-            }
-          : s
-      )
-    );
-  };
+  const mentorFirstName = currentUserProfile?.full_name?.trim()?.split(' ')[0] || 'Mentor';
+  const mentorRating = currentUserProfile?.average_rating ? Number(currentUserProfile.average_rating).toFixed(1) : '5.0';
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -209,7 +164,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
 
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white">
-              Good morning, Alex!
+              Good morning, {mentorFirstName}!
             </h1>
             <p className="text-xs text-sky-100 font-medium mt-0.5">
               Ready to help your students grow today?
@@ -218,7 +173,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
         </div>
       </div>
 
-      {/* 2. Today's Overview (2x2 Compact Metric Grid matching Learning Progress Screen) */}
+      {/* 2. Today's Overview Metric Grid */}
       <div className="space-y-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
           Today's Overview
@@ -241,7 +196,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
             </div>
             <div>
               <span className="text-2xl font-extrabold text-sky-700 tracking-tight">
-                2
+                {todaySessionsCount}
               </span>
               <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Scheduled today</p>
             </div>
@@ -259,9 +214,11 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
             </div>
             <div>
               <span className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-                ₱3,750
+                ₱{totalEarnings.toLocaleString()}
               </span>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">15 paid sessions</p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                {completedSessions.length} paid sessions
+              </p>
             </div>
           </div>
 
@@ -312,9 +269,9 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
             </div>
             <div>
               <span className="text-2xl font-extrabold text-purple-700 tracking-tight">
-                4.9
+                {mentorRating}
               </span>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">24 reviews</p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Academic rating</p>
             </div>
           </button>
         </div>
@@ -365,7 +322,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`w-10 h-10 rounded-full ${req.avatarBg} text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0`}
+                      className={`w-10 h-10 rounded-full ${req.avatarBg || 'bg-sky-500'} text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0`}
                     >
                       {req.initials}
                     </div>
@@ -374,7 +331,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                         {req.studentName}
                       </h3>
                       <p className="text-[11px] text-slate-500 font-medium">
-                        {req.course} · {req.yearLevel}
+                        {req.course} {req.yearLevel ? `· ${req.yearLevel}` : ''}
                       </p>
                     </div>
                   </div>
@@ -408,12 +365,12 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                     </div>
                   </div>
 
-                  {/* Anti-Scam Down Payment Details */}
+                  {/* Payment Details */}
                   <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
                     <div>
-                      <span className="font-bold text-slate-800">50% Down Payment: ₱{(req.downPayment || 125).toFixed(2)}</span>
+                      <span className="font-bold text-slate-800">Amount: ₱{(req.downPayment || req.totalFee || 0).toFixed(2)}</span>
                       <span className="text-[10px] text-slate-500 block">
-                        Via {req.paymentMethod || 'GCash'} · Ref: <span className="font-mono font-bold text-sky-700">{req.referenceNumber || 'MP-8921-7734'}</span>
+                        Via {req.paymentMethod || 'GCash'} · Ref: <span className="font-mono font-bold text-sky-700">{req.referenceNumber || 'N/A'}</span>
                       </span>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200">
@@ -431,7 +388,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                     </svg>
-                    <span>Verify ₱{(req.downPayment || 125).toFixed(0)} & Accept</span>
+                    <span>Verify & Accept</span>
                   </button>
 
                   <button
@@ -474,7 +431,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
           <div className="bg-white rounded-2xl border border-slate-200 p-5 text-center space-y-2">
             <p className="text-xs font-bold text-slate-800">No Upcoming Sessions</p>
             <p className="text-[11px] text-slate-400">
-              Your confirmed tutoring sessions will appear here with live countdowns.
+              Your confirmed tutoring sessions will appear here with classroom links.
             </p>
           </div>
         ) : (
@@ -488,7 +445,7 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`w-10 h-10 rounded-full ${sess.avatarBg} text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0`}
+                      className={`w-10 h-10 rounded-full ${sess.avatarBg || 'bg-sky-500'} text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0`}
                     >
                       {sess.initials}
                     </div>
@@ -530,18 +487,6 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                       <span>{sess.time}</span>
                     </div>
                   </div>
-
-                  {/* Countdown Bar */}
-                  <div className="pt-1 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500 font-medium">Classroom Access:</span>
-                    <span
-                      onClick={() => toggleJoinableSession(sess.id)}
-                      className="font-semibold text-sky-600 cursor-pointer hover:underline"
-                      title="Click to toggle classroom unlock simulation"
-                    >
-                      {sess.countdown}
-                    </span>
-                  </div>
                 </div>
 
                 {/* Session Action Buttons */}
@@ -553,28 +498,17 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
                     View Session
                   </button>
 
-                  {sess.isJoinable ? (
-                    <button
-                      onClick={() => showToast('Opening Virtual Classroom...')}
-                      className="touch-target flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-                    >
-                      <svg className="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                      </svg>
-                      <span>Join Session</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => toggleJoinableSession(sess.id)}
-                      className="touch-target flex-1 bg-slate-100 hover:bg-slate-200/80 text-slate-500 text-xs font-medium py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1"
-                      title="Click to test active unlock state"
-                    >
-                      <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                      </svg>
-                      <span>Unlock Test</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (onNavigateTab) onNavigateTab('sessions');
+                    }}
+                    className="touch-target flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                    <span>Classroom</span>
+                  </button>
                 </div>
               </div>
             ))}
@@ -597,46 +531,55 @@ export default function MentorDashboard({ onNavigateTab, onViewStudentProfile, o
           </button>
         </div>
 
-        <div className="space-y-2">
-          {students.map((stud) => (
-            <div
-              key={stud.id}
-              className="bg-white rounded-2xl border border-slate-200/80 p-3.5 flex items-center justify-between hover:border-slate-300 transition-all shadow-xs"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 rounded-full ${stud.avatarBg} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs`}
-                >
-                  {stud.initials}
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-900 leading-tight">
-                    {stud.name}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {stud.course} · {stud.yearLevel}
-                  </p>
-                  <p className="text-[10px] text-sky-600 font-semibold mt-0.5">
-                    {stud.sessionsCount} Sessions completed
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (onViewStudentProfile) {
-                    onViewStudentProfile(stud);
-                  } else if (onNavigateTab) {
-                    onNavigateTab('students');
-                  }
-                }}
-                className="touch-target text-xs font-semibold text-slate-700 hover:text-sky-600 bg-slate-50 hover:bg-sky-50 px-3 py-1.5 rounded-xl border border-slate-200/80 transition-all active:scale-95"
+        {students.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 text-center space-y-2">
+            <p className="text-xs font-bold text-slate-800">No Students Yet</p>
+            <p className="text-[11px] text-slate-400">
+              Students who book sessions with you will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {students.slice(0, 4).map((stud) => (
+              <div
+                key={stud.id}
+                className="bg-white rounded-2xl border border-slate-200/80 p-3.5 flex items-center justify-between hover:border-slate-300 transition-all shadow-xs"
               >
-                View Profile
-              </button>
-            </div>
-          ))}
-        </div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-full ${stud.avatarBg} text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs`}
+                  >
+                    {stud.initials}
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 leading-tight">
+                      {stud.name}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {stud.course} {stud.yearLevel ? `· ${stud.yearLevel}` : ''}
+                    </p>
+                    <p className="text-[10px] text-sky-600 font-semibold mt-0.5">
+                      {stud.sessionsCount} Sessions completed
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (onViewStudentProfile) {
+                      onViewStudentProfile(stud);
+                    } else if (onNavigateTab) {
+                      onNavigateTab('students');
+                    }
+                  }}
+                  className="touch-target text-xs font-semibold text-slate-700 hover:text-sky-600 bg-slate-50 hover:bg-sky-50 px-3 py-1.5 rounded-xl border border-slate-200/80 transition-all active:scale-95"
+                >
+                  View Profile
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 6. Quick Action Card */}

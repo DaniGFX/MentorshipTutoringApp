@@ -1,8 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { tutorService } from '../../services/tutorService.js';
 
-export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewConfirmedSession, onJoinClassroom }) {
-  // State to simulate upcoming session preview toggle (Empty vs Confirmed)
-  const [hasConfirmedSession, setHasConfirmedSession] = useState(true);
+export default function HomeScreen({
+  currentUserProfile,
+  sessions = [],
+  onNavigateTab,
+  onViewMentorProfile,
+  onViewConfirmedSession,
+  onJoinClassroom
+}) {
+  const [recommendedMentors, setRecommendedMentors] = useState([]);
+  const [loadingMentors, setLoadingMentors] = useState(true);
+
+  // Load recommended mentors from Supabase
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchRecommended() {
+      try {
+        setLoadingMentors(true);
+        const { data, error } = await tutorService.getTutors();
+        if (isMounted && data) {
+          // Take top 3 mentors
+          setRecommendedMentors(data.slice(0, 3));
+        }
+      } catch (err) {
+        console.error('[HomeScreen] Error loading mentors:', err);
+      } finally {
+        if (isMounted) setLoadingMentors(false);
+      }
+    }
+    fetchRecommended();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const studentFirstName = currentUserProfile?.full_name?.trim()?.split(' ')[0] || 'Student';
+  const upcomingSession = sessions.find((s) => s.status === 'confirmed');
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -20,11 +54,11 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
 
           <div>
             <h1 className="text-xl font-bold tracking-tight text-white">
-              Good morning, Daniela!
+              Good morning, {studentFirstName}!
             </h1>
             <p className="text-xs text-sky-100 font-medium mt-0.5">
               Ready to learn something new today?
-            </p>npm
+            </p>
           </div>
 
           {/* Search Bar Input Trigger */}
@@ -99,23 +133,13 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
         </div>
       </div>
 
-      {/* 3. Upcoming Session Section (Dynamic State) */}
+      {/* 3. Upcoming Session Section */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Upcoming Session
-            </h2>
-            {/* Interactive State Toggle Pill for previewing both states */}
-            <button
-              onClick={() => setHasConfirmedSession(!hasConfirmedSession)}
-              className="text-[10px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200 transition-colors"
-              title="Click to toggle between Confirmed and Empty State previews"
-            >
-              {hasConfirmedSession ? 'Preview Empty' : 'Preview Active'}
-            </button>
-          </div>
-          {hasConfirmedSession && (
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Upcoming Session
+          </h2>
+          {upcomingSession && (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               Confirmed
@@ -123,17 +147,21 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
           )}
         </div>
 
-        {hasConfirmedSession ? (
-          /* Active Upcoming Session Card */
+        {upcomingSession ? (
+          /* Real Upcoming Session Card */
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 relative overflow-hidden">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center font-bold text-sky-700 text-sm shrink-0">
-                  AS
+                  {upcomingSession.mentor?.initials || 'MT'}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 leading-snug">Alex Santos</h3>
-                  <p className="text-xs text-sky-600 font-semibold">Web Development Mentoring</p>
+                  <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                    {upcomingSession.mentor?.name || 'Peer Mentor'}
+                  </h3>
+                  <p className="text-xs text-sky-600 font-semibold">
+                    {upcomingSession.topic || upcomingSession.mentor?.specialization || 'Academic Mentoring'}
+                  </p>
                 </div>
               </div>
 
@@ -141,7 +169,7 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
                 <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25" />
                 </svg>
-                Online Room
+                {upcomingSession.format || 'Online Room'}
               </span>
             </div>
 
@@ -151,13 +179,13 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
                 <svg className="w-4 h-4 text-sky-600 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
                 </svg>
-                <span className="font-semibold">Sept 25, 2026</span>
+                <span className="font-semibold">{upcomingSession.date}</span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-600">
                 <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                 </svg>
-                <span>7:00 PM – 8:00 PM</span>
+                <span>{upcomingSession.time}</span>
               </div>
             </div>
 
@@ -165,7 +193,7 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => onViewConfirmedSession ? onViewConfirmedSession() : (onNavigateTab && onNavigateTab('sessions'))}
+                onClick={() => onViewConfirmedSession ? onViewConfirmedSession(upcomingSession) : (onNavigateTab && onNavigateTab('sessions'))}
                 className="touch-target flex-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 active:scale-[0.99] font-bold text-xs py-2.5 rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
               >
                 <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -177,7 +205,7 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
 
               <button
                 type="button"
-                onClick={() => onJoinClassroom ? onJoinClassroom() : (onNavigateTab && onNavigateTab('sessions'))}
+                onClick={() => onJoinClassroom ? onJoinClassroom(upcomingSession) : (onNavigateTab && onNavigateTab('sessions'))}
                 className="touch-target flex-1 bg-sky-600 hover:bg-sky-700 active:scale-[0.99] text-white font-bold text-xs py-2.5 rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
               >
                 <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -237,182 +265,103 @@ export default function HomeScreen({ onNavigateTab, onViewMentorProfile, onViewC
         </div>
 
         {/* Mentor Cards List */}
-        <div className="space-y-3">
-          {/* Mentor Card 1: Alex Santos */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 hover:border-sky-200 transition-all">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center font-bold text-sky-700 text-sm shrink-0">
-                  AS
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-sm font-bold text-slate-900">Alex Santos</h3>
-                    {/* Verified Mentor Vector Badge */}
-                    <span className="text-sky-600" title="Verified Peer Mentor">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Web Development Mentor</p>
-                </div>
-              </div>
-
-              {/* Rate Tag: Hourly Fee */}
-              <span className="inline-block bg-sky-50 text-sky-700 border border-sky-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                ₱250/hr
-              </span>
-            </div>
-
-            {/* Subject Chips */}
-            <div className="flex flex-wrap gap-1.5">
-              {['Web Development', 'React', 'JavaScript', 'HTML & CSS'].map((skill) => (
-                <span
-                  key={skill}
-                  className="bg-sky-50 text-sky-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-sky-100"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-
-            {/* Rating & Action Footer */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
-                {/* Star Vector SVG */}
-                <svg className="w-3.5 h-3.5 fill-amber-500 text-amber-500" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                <span>4.9</span>
-                <span className="text-slate-400 font-normal">(24 sessions)</span>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (onViewMentorProfile) {
-                    onViewMentorProfile({
-                      id: 'mentor-1',
-                      name: 'Alex Santos',
-                      specialization: 'Web Development Mentor',
-                      category: 'Web Development',
-                      rating: 4.9,
-                      sessionsCount: 24,
-                      isVerified: true,
-                      rate: '₱250.00 / hr',
-                      hourlyRate: 250,
-                      paymentMethods: ['GCash', 'BDO Unibank'],
-                      gcashNumber: '0917-555-0192',
-                      gcashName: 'Alex Santos',
-                      bankName: 'BDO Unibank',
-                      bankAccount: '1092-8834-5512',
-                      bankHolder: 'Alex Santos',
-                      avatarBg: 'bg-sky-600',
-                      initials: 'AS',
-                      bio: "I'm a web development mentor who helps students build their programming skills through practical projects and guided learning.",
-                      expertise: ['Web Development', 'JavaScript', 'HTML & CSS', 'React', 'Git & GitHub'],
-                      experience: '3+ Years Web Development & Mentoring',
-                      mentoringStyle: [
-                        { title: 'Project-Based Learning', desc: 'Build practical applications to solidify theoretical concepts' },
-                        { title: 'Hands-on Guidance', desc: 'Direct code reviews and interactive pair debugging' },
-                        { title: 'One-on-One Sessions', desc: 'Focused discussions tailored to your personal learning pace' }
-                      ],
-                      availability: 'Monday – Friday, 6:00 PM – 9:00 PM'
-                    });
-                  } else if (onNavigateTab) {
-                    onNavigateTab('explore');
-                  }
-                }}
-                className="touch-target px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded-xl border border-sky-200 transition-colors"
-              >
-                View Profile
-              </button>
-            </div>
+        {loadingMentors ? (
+          <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+            <svg className="w-4 h-4 animate-spin text-sky-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <span>Loading mentors...</span>
           </div>
-
-          {/* Mentor Card 2: Maria Cruz */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 hover:border-sky-200 transition-all">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-100 border border-cyan-200 flex items-center justify-center font-bold text-cyan-700 text-sm shrink-0">
-                  MC
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-sm font-bold text-slate-900">Maria Cruz</h3>
-                    <span className="text-sky-600" title="Verified Peer Mentor">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">UI/UX Design Mentor</p>
-                </div>
-              </div>
-
-              {/* Rate Tag: Hourly Fee */}
-              <span className="inline-block bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                ₱250/hr
-              </span>
-            </div>
-
-            {/* Subject Chips */}
-            <div className="flex flex-wrap gap-1.5">
-              {['UI/UX Design', 'Figma', 'Mobile Prototyping', 'Design Systems'].map((skill) => (
-                <span
-                  key={skill}
-                  className="bg-sky-50 text-sky-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-sky-100"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-
-            {/* Rating & Action Footer */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
-                <svg className="w-3.5 h-3.5 fill-amber-500 text-amber-500" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                <span>4.8</span>
-                <span className="text-slate-400 font-normal">(18 sessions)</span>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (onViewMentorProfile) {
-                    onViewMentorProfile({
-                      id: 'mentor-2',
-                      name: 'Maria Cruz',
-                      specialization: 'UI/UX Design Mentor',
-                      category: 'UI/UX',
-                      rating: 4.8,
-                      sessionsCount: 18,
-                      isVerified: true,
-                      rate: '₱200 / session',
-                      avatarBg: 'bg-indigo-600',
-                      initials: 'MC',
-                      bio: 'BS Computer Science student focused on human-computer interaction, Figma design systems, wireframing, and interactive design prototyping.',
-                      expertise: ['UI/UX Design', 'Figma', 'Mobile Prototyping', 'Design Systems'],
-                      experience: '2+ Years UI/UX Design & Prototyping',
-                      mentoringStyle: [
-                        { title: 'Design Critiques', desc: 'Detailed actionable feedback on UI layouts and typography' },
-                        { title: 'Figma Best Practices', desc: 'Component auto-layouts, tokens, and prototyping tips' },
-                        { title: 'Portfolio & Case Studies', desc: 'Crafting compelling design portfolio presentations' }
-                      ],
-                      availability: 'Tue, Thu, Sat · 4:00 PM – 7:00 PM'
-                    });
-                  } else if (onNavigateTab) {
-                    onNavigateTab('explore');
-                  }
-                }}
-                className="touch-target px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded-xl border border-sky-200 transition-colors"
-              >
-                View Profile
-              </button>
-            </div>
+        ) : recommendedMentors.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm space-y-2">
+            <p className="text-xs font-bold text-slate-700">No Mentors Listed Yet</p>
+            <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+              Peer mentors will appear here as they register and publish their tutoring profiles.
+            </p>
+            <button
+              onClick={() => onNavigateTab && onNavigateTab('explore')}
+              className="touch-target text-xs font-bold text-sky-600 hover:text-sky-700 inline-flex items-center gap-1 pt-1"
+            >
+              <span>Explore Directory</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+              </svg>
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-3">
+            {recommendedMentors.map((mentor) => (
+              <div
+                key={mentor.id}
+                className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3 hover:border-sky-200 transition-all"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 border border-sky-200 flex items-center justify-center font-bold text-sky-700 text-sm shrink-0">
+                      {mentor.initials}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-sm font-bold text-slate-900">{mentor.name}</h3>
+                        {mentor.isVerified && (
+                          <span className="text-sky-600" title="Verified Peer Mentor">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium">{mentor.specialization}</p>
+                    </div>
+                  </div>
+
+                  <span className="inline-block bg-sky-50 text-sky-700 border border-sky-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                    {mentor.rate}
+                  </span>
+                </div>
+
+                {/* Subject Chips */}
+                {mentor.expertise && mentor.expertise.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {mentor.expertise.slice(0, 4).map((skill) => (
+                      <span
+                        key={skill}
+                        className="bg-sky-50 text-sky-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-sky-100"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Rating & Action Footer */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
+                    <svg className="w-3.5 h-3.5 fill-amber-500 text-amber-500" viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    <span>{mentor.rating.toFixed(1)}</span>
+                    <span className="text-slate-400 font-normal">({mentor.sessionsCount} sessions)</span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (onViewMentorProfile) {
+                        onViewMentorProfile(mentor);
+                      } else if (onNavigateTab) {
+                        onNavigateTab('explore');
+                      }
+                    }}
+                    className="touch-target px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold rounded-xl border border-sky-200 transition-colors"
+                  >
+                    View Profile
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

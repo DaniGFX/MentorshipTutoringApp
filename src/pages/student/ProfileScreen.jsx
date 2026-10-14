@@ -15,20 +15,27 @@ import { supabase } from '../../services/supabaseClient.js';
  * - Strictly uses vector SVGs — zero raw emojis in UI.
  */
 export default function ProfileScreen({
+  currentUserProfile,
   onOpenLearningProgress,
   onViewSessionHistory,
   onLogout
 }) {
   // Student Profile State
-  const [profile, setProfile] = useState({
-    name: 'Daniela Gonzales',
-    email: 'student@mentorlink.ph',
-    school: 'Polytechnic University of the Philippines',
-    course: 'BS Information Technology',
-    yearLevel: '3rd Year Student',
-    bio: 'Third-year IT major focusing on frontend systems and mobile-first responsive architecture.',
-    avatarBg: 'bg-sky-600',
-    initials: 'DG'
+  const [profile, setProfile] = useState(() => {
+    const fullName = currentUserProfile?.full_name || '';
+    const initials = fullName
+      ? fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+      : 'ST';
+    return {
+      name: fullName || 'Student Learner',
+      email: currentUserProfile?.email || '',
+      school: currentUserProfile?.school_name || '',
+      course: currentUserProfile?.course_program || '',
+      yearLevel: currentUserProfile?.year_level || '',
+      bio: currentUserProfile?.bio || '',
+      avatarBg: 'bg-sky-600',
+      initials: initials || 'ST'
+    };
   });
 
   // Fetch live profile from Supabase on mount
@@ -40,7 +47,7 @@ export default function ProfileScreen({
         if (authData?.user) {
           const { data } = await profileService.getProfile(authData.user.id);
           if (isMounted && data) {
-            const fullName = data.full_name || 'Daniela Gonzales';
+            const fullName = data.full_name || authData.user.email?.split('@')[0] || 'Student Learner';
             const initials = fullName
               .split(' ')
               .map((n) => n[0])
@@ -56,7 +63,7 @@ export default function ProfileScreen({
               course: data.course_program || prev.course,
               yearLevel: data.year_level || prev.yearLevel,
               bio: data.bio || prev.bio,
-              initials,
+              initials: initials || 'ST',
             }));
           }
         }

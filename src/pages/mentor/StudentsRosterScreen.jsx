@@ -12,6 +12,7 @@ import StudentProfilePreview from './StudentProfilePreview.jsx';
  * - Strictly uses vector SVGs — zero raw emojis in UI.
  */
 export default function StudentsRosterScreen({
+  sessions = [],
   onMessageStudent,
   onViewSession,
   onViewRequests,
@@ -21,66 +22,48 @@ export default function StudentsRosterScreen({
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'active' | 'upcoming' | 'completed'
   const [selectedStudent, setSelectedStudent] = useState(null);
 
-  // Default seed mentee students
-  const [studentsList] = useState([
-    {
-      id: 'std-1',
-      name: 'Daniela Gonzales',
-      course: 'BS Information Technology',
-      yearLevel: '3rd Year Student',
-      school: 'Bestlink College of the Philippines',
-      status: 'active',
-      hasUpcoming: true,
-      upcomingSession: {
-        id: 'sess-101',
-        topic: 'JavaScript Functions, parameters, and return values',
-        date: 'Sept 25, 2026',
-        time: '7:00 PM – 8:00 PM',
-        format: 'Online Room'
-      },
-      sessionsCount: 3,
-      totalHours: '4.5 hrs',
-      lastSession: 'Sept 18, 2026',
-      bio: 'BSIT student passionate about modern web development, frontend frameworks, UI design, and problem solving.',
-      interests: ['Web Development', 'JavaScript & React', 'UI/UX Design', 'Database & SQL'],
-      initials: 'DG',
-      avatarBg: 'bg-sky-600'
-    },
-    {
-      id: 'std-2',
-      name: 'Mark Reyes',
-      course: 'BS Computer Science',
-      yearLevel: '2nd Year Student',
-      school: 'Bestlink College of the Philippines',
-      status: 'active',
-      hasUpcoming: false,
-      upcomingSession: null,
-      sessionsCount: 5,
-      totalHours: '6.0 hrs',
-      lastSession: 'Sept 20, 2026',
-      bio: 'Computer Science sophomore focused on mastering algorithms, object-oriented concepts, and building scalable software.',
-      interests: ['Data Structures', 'Java & C++', 'Algorithms', 'Competitive Programming'],
-      initials: 'MR',
-      avatarBg: 'bg-teal-600'
-    },
-    {
-      id: 'std-3',
-      name: 'Sofia Garcia',
-      course: 'BS Information Technology',
-      yearLevel: '4th Year Student',
-      school: 'Bestlink College of the Philippines',
-      status: 'completed',
-      hasUpcoming: false,
-      upcomingSession: null,
-      sessionsCount: 2,
-      totalHours: '2.5 hrs',
-      lastSession: 'Sept 12, 2026',
-      bio: 'Graduating IT student completing capstone system documentation, architecture diagrams, and Figma wireframes.',
-      interests: ['UI/UX Design', 'System Architecture', 'Web Development', 'Cloud Fundamentals'],
-      initials: 'SG',
-      avatarBg: 'bg-purple-600'
+  // Derive mentee students dynamically from sessions
+  const studentsMap = new Map();
+  (sessions || []).forEach((s) => {
+    const studentId = s.student?.id || s.studentName;
+    if (studentId) {
+      const isConfirmed = s.status === 'confirmed';
+      const isCompleted = s.status === 'completed';
+      const existing = studentsMap.get(studentId) || {
+        id: studentId,
+        name: s.student?.name || s.studentName || 'Student Learner',
+        course: s.student?.course || s.course || 'College Student',
+        yearLevel: s.student?.yearLevel || s.yearLevel || '',
+        school: s.student?.school || 'University',
+        status: isCompleted ? 'completed' : 'active',
+        hasUpcoming: false,
+        upcomingSession: null,
+        sessionsCount: 0,
+        totalHours: '0.0 hrs',
+        lastSession: s.date || 'Recent',
+        bio: s.student?.bio || 'Academic mentee focused on subject mastery and guided peer learning.',
+        interests: [s.topic || 'Academic Mentoring'],
+        initials: s.student?.initials || s.initials || 'SL',
+        avatarBg: s.student?.avatarBg || s.avatarBg || 'bg-sky-600'
+      };
+
+      if (isConfirmed && !existing.hasUpcoming) {
+        existing.hasUpcoming = true;
+        existing.upcomingSession = {
+          id: s.id,
+          topic: s.topic,
+          date: s.date,
+          time: s.time,
+          format: s.format
+        };
+      }
+      if (isCompleted) {
+        existing.sessionsCount += 1;
+      }
+      studentsMap.set(studentId, existing);
     }
-  ]);
+  });
+  const studentsList = Array.from(studentsMap.values());
 
   // Counts
   const allCount = studentsList.length;

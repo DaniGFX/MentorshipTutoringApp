@@ -31,6 +31,7 @@ import SplashScreen from './pages/auth/SplashScreen.jsx';
 import StudentProfileSetup from './pages/student/StudentProfileSetup.jsx';
 import MentorSetupScreen from './pages/mentor/MentorSetupScreen.jsx';
 import { authService } from './services/authService.js';
+import { sessionService } from './services/sessionService.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
@@ -65,6 +66,111 @@ export default function App() {
     return hasCourse && hasYear;
   };
 
+  // Student sessions state (dynamically loaded from Supabase)
+  const [studentSessions, setStudentSessions] = useState([]);
+  // Mentor sessions state (dynamically loaded from Supabase)
+  const [mentorSessions, setMentorSessions] = useState([]);
+
+  const loadLiveSessions = async (userId, role = 'student') => {
+    if (!userId) return;
+    try {
+      if (role === 'student') {
+        const { data, error } = await sessionService.getStudentSessions(userId);
+        if (data) {
+          const mapped = data.map((s) => {
+            const tutorProf = s.tutor_profile || {};
+            const prof = tutorProf.profile || {};
+            const startDt = new Date(s.scheduled_start);
+            const dateStr = startDt.toISOString().slice(0, 10);
+            const timeStr = `${startDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${new Date(s.scheduled_end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+            const rateNum = parseFloat(tutorProf.hourly_rate) || 0;
+            return {
+              id: s.id,
+              status: s.status,
+              mentor: {
+                id: s.tutor_id,
+                name: prof.full_name || 'Academic Mentor',
+                specialization: tutorProf.headline || 'Peer Mentor',
+                rating: parseFloat(tutorProf.average_rating) || 5.0,
+                sessionsCount: tutorProf.completed_sessions_count || 0,
+                isVerified: true,
+                rate: rateNum === 0 ? '₱0.00 / hr' : `₱${rateNum.toFixed(2)} / hr`,
+                avatarBg: 'bg-sky-600',
+                initials: prof.full_name
+                  ? prof.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                  : 'AM',
+              },
+              date: dateStr,
+              time: timeStr,
+              duration: `${Math.round((s.duration_hours || 1) * 60)} min`,
+              format: s.meeting_type === 'online' ? 'Online' : 'In-person',
+              totalFee: parseFloat(s.total_amount) || rateNum * (s.duration_hours || 1),
+              downPayment: parseFloat(s.payment_amount) || 0,
+              remainingBalance: Math.max(0, (parseFloat(s.total_amount) || 0) - (parseFloat(s.payment_amount) || 0)),
+              paymentMethod: s.payment_channel || 'GCash',
+              referenceNumber: s.payment_reference || 'N/A',
+              paymentStatus: s.payment_status || 'submitted',
+              topic: s.session_topic,
+              submittedAt: new Date(s.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+              studyNotes: s.session_notes,
+            };
+          });
+          setStudentSessions(mapped);
+        }
+      } else if (role === 'mentor') {
+        const { data, error } = await sessionService.getMentorSessions(userId);
+        if (data) {
+          const mapped = data.map((s) => {
+            const studentProf = s.student_profile || {};
+            const startDt = new Date(s.scheduled_start);
+            const dateStr = startDt.toISOString().slice(0, 10);
+            const timeStr = `${startDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${new Date(s.scheduled_end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+            const isFullPayment = (s.student_note || '').includes('Full Payment') || Number(s.payment_amount) >= 250;
+            return {
+              id: s.id,
+              status: s.status,
+              student: {
+                id: s.student_id,
+                name: studentProf.full_name || 'Student Learner',
+                course: studentProf.course_program || 'BS Information Technology',
+                yearLevel: studentProf.year_level || 'College Student',
+                school: studentProf.school_name || 'University',
+                avatarBg: 'bg-sky-600',
+                initials: studentProf.full_name
+                  ? studentProf.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                  : 'SL',
+              },
+              studentName: studentProf.full_name || 'Student Learner',
+              course: studentProf.course_program || 'BS Information Technology',
+              yearLevel: studentProf.year_level || 'College Student',
+              topic: s.session_topic,
+              date: dateStr,
+              time: timeStr,
+              duration: `${Math.round((s.duration_hours || 1) * 60)} min`,
+              format: s.meeting_type === 'online' ? 'Online' : 'In-person',
+              totalFee: parseFloat(s.total_amount) || Number(s.payment_amount) || 0,
+              downPayment: isFullPayment ? 0 : Number(s.payment_amount) || 0,
+              remainingBalance: isFullPayment ? 0 : Math.max(0, (parseFloat(s.total_amount) || 0) - (Number(s.payment_amount) || 0)),
+              paymentMethod: s.payment_channel || 'GCash',
+              referenceNumber: s.payment_reference || 'N/A',
+              paymentStatus: s.payment_status || 'submitted',
+              studentNote: s.student_note,
+              initials: studentProf.full_name
+                ? studentProf.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                : 'SL',
+              avatarBg: 'bg-sky-500',
+              countdown: 'Starts soon',
+              isJoinable: false
+            };
+          });
+          setMentorSessions(mapped);
+        }
+      }
+    } catch (err) {
+      console.error('[App] Error loading live sessions:', err);
+    }
+  };
+
   // Restore authenticated Supabase session on app launch
   useEffect(() => {
     async function restoreSession() {
@@ -75,6 +181,7 @@ export default function App() {
           setCurrentUserProfile(profile);
           const role = profile?.account_type || 'student';
           setUserRole(role);
+          loadLiveSessions(user.id, role);
           if (!isProfileComplete(profile)) {
             setAuthView(role === 'mentor' ? 'mentor-setup' : 'student-setup');
           } else {
@@ -98,94 +205,10 @@ export default function App() {
     }
     setCurrentUser(null);
     setCurrentUserProfile(null);
+    setStudentSessions([]);
+    setMentorSessions([]);
     setAuthView('login');
   };
-
-  // Student sessions state (Pending, Confirmed, Completed)
-  const [studentSessions, setStudentSessions] = useState([
-    {
-      id: 'session-req-101',
-      status: 'pending',
-      mentor: {
-        id: 'mentor-1',
-        name: 'Alex Santos',
-        specialization: 'Web Development Mentor',
-        rating: 4.9,
-        sessionsCount: 24,
-        isVerified: true,
-        rate: '₱250.00 / hr',
-        avatarBg: 'bg-sky-600',
-        initials: 'AS'
-      },
-      date: '2026-09-25',
-      time: '7:00 PM – 8:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      totalFee: 250,
-      downPayment: 125,
-      remainingBalance: 125,
-      paymentMethod: 'GCash',
-      referenceNumber: 'MP-8921-7734',
-      paymentStatus: 'downpayment_submitted',
-      topic: 'JavaScript Functions, parameters, and return values',
-      submittedAt: 'Today at 7:30 PM'
-    },
-    {
-      id: 'session-conf-102',
-      status: 'confirmed',
-      mentor: {
-        id: 'mentor-2',
-        name: 'Maria Clara',
-        specialization: 'Data Structures & Algorithms',
-        rating: 4.8,
-        sessionsCount: 38,
-        isVerified: true,
-        rate: '₱250.00 / hr',
-        avatarBg: 'bg-emerald-600',
-        initials: 'MC'
-      },
-      date: '2026-09-22',
-      time: '6:00 PM – 7:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      totalFee: 250,
-      downPayment: 125,
-      remainingBalance: 125,
-      paymentMethod: 'BDO',
-      referenceNumber: 'BDO-0921-3312',
-      paymentStatus: 'downpayment_verified',
-      topic: 'Binary Search Trees and Traversals',
-      submittedAt: 'Sept 19 at 4:15 PM'
-    },
-    {
-      id: 'session-comp-103',
-      status: 'completed',
-      mentor: {
-        id: 'mentor-3',
-        name: 'Carlos Reyes',
-        specialization: 'UI/UX Design & Figma Systems',
-        rating: 5.0,
-        sessionsCount: 45,
-        isVerified: true,
-        rate: '₱200.00 / hr',
-        avatarBg: 'bg-purple-600',
-        initials: 'CR'
-      },
-      date: '2026-09-18',
-      time: '5:00 PM – 6:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      totalFee: 200,
-      downPayment: 100,
-      remainingBalance: 0,
-      paymentMethod: 'Maya Bank',
-      referenceNumber: 'MB-4412-9901',
-      paymentStatus: 'fully_paid',
-      topic: 'Mobile-first Wireframing and Auto Layout in Figma',
-      ratingGiven: 5,
-      studyNotes: 'Focus on 8pt grid systems, touch targets >= 44px, and atomic component structure.'
-    }
-  ]);
 
   const handleCancelSessionRequest = (sessionId) => {
     setStudentSessions((prev) =>
@@ -528,6 +551,8 @@ export default function App() {
           />
         ) : userRole === 'student' && activeTab === 'home' ? (
           <HomeScreen
+            currentUserProfile={currentUserProfile}
+            sessions={studentSessions}
             onNavigateTab={(tabId) => {
               setActiveBookingMentor(null);
               setViewingMentorProfile(null);
@@ -541,12 +566,12 @@ export default function App() {
               setActiveTab(tabId);
             }}
             onViewMentorProfile={(selectedMentor) => setViewingMentorProfile(selectedMentor)}
-            onViewConfirmedSession={() => {
-              const confirmed = studentSessions.find((s) => s.status === 'confirmed') || studentSessions[1];
+            onViewConfirmedSession={(sess) => {
+              const confirmed = sess || studentSessions.find((s) => s.status === 'confirmed');
               setViewingConfirmedSession(confirmed);
             }}
-            onJoinClassroom={() => {
-              const confirmed = studentSessions.find((s) => s.status === 'confirmed') || studentSessions[1];
+            onJoinClassroom={(sess) => {
+              const confirmed = sess || studentSessions.find((s) => s.status === 'confirmed');
               setActiveClassroomSession(confirmed);
             }}
           />
@@ -621,6 +646,7 @@ export default function App() {
           />
         ) : userRole === 'student' && activeTab === 'profile' && viewingLearningProgress ? (
           <LearningProgressScreen
+            sessions={studentSessions}
             onBack={() => setViewingLearningProgress(false)}
             onViewSessionHistory={() => {
               setViewingLearningProgress(false);
@@ -629,6 +655,7 @@ export default function App() {
           />
         ) : userRole === 'student' && activeTab === 'profile' ? (
           <ProfileScreen
+            currentUserProfile={currentUserProfile}
             onOpenLearningProgress={() => setViewingLearningProgress(true)}
             onViewSessionHistory={() => setActiveTab('sessions')}
             onLogout={handleLogout}
@@ -675,6 +702,8 @@ export default function App() {
           />
         ) : userRole === 'mentor' && activeTab === 'home' ? (
           <MentorDashboard
+            currentUserProfile={currentUserProfile}
+            sessions={mentorSessions}
             onNavigateTab={(tabId) => {
               setViewingStudentProfile(null);
               setActiveMentorChatStudent(null);
@@ -687,6 +716,7 @@ export default function App() {
           />
         ) : userRole === 'mentor' && activeTab === 'students' ? (
           <StudentsRosterScreen
+            sessions={mentorSessions}
             onMessageStudent={(student) => {
               setActiveMentorChatStudent(student);
               setActiveTab('messages');
@@ -702,14 +732,9 @@ export default function App() {
         ) : userRole === 'mentor' && activeTab === 'messages' && activeMentorChatStudent ? (
           <MentorChatScreen
             student={activeMentorChatStudent}
-            session={{
-              id: 'sess-101',
-              topic: 'JavaScript Functions, parameters, and return values',
-              date: 'Sept 25, 2026',
-              time: '7:00 PM – 8:00 PM',
-              format: 'Online Room',
-              status: 'confirmed'
-            }}
+            session={
+              mentorSessions.find((s) => s.student?.id === activeMentorChatStudent?.id) || null
+            }
             onBack={() => setActiveMentorChatStudent(null)}
             onViewStudentProfile={(student) => {
               setViewingStudentProfile(student);
@@ -762,6 +787,7 @@ export default function App() {
           />
         ) : userRole === 'mentor' && activeTab === 'sessions' ? (
           <MentorSessionsScreen
+            sessions={mentorSessions}
             onViewSessionDetails={(session) => setViewingMentorSessionDetails(session)}
             onViewCompletedSession={(session) => setViewingMentorCompletedSession(session)}
             onJoinSession={(session) => {
@@ -779,6 +805,7 @@ export default function App() {
           />
         ) : userRole === 'mentor' && activeTab === 'profile' ? (
           <MentorProfileSettingsScreen
+            currentUserProfile={currentUserProfile}
             onOpenAvailability={() => setViewingMentorAvailability(true)}
             onOpenNotifications={() => setViewingMentorNotificationSettings(true)}
             onViewStudents={() => {

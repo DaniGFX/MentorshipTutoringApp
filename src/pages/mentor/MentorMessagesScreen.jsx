@@ -59,72 +59,7 @@ export default function MentorMessagesScreen({
     };
   }, []);
 
-  // Default seed conversations for peer mentor Alex Santos
-  const defaultConversations = [
-    {
-      id: 'conv-daniela-gonzales',
-      student: {
-        id: 'std-1',
-        name: 'Daniela Gonzales',
-        course: 'BS Information Technology · 3rd Year',
-        school: 'Bestlink College of the Philippines',
-        avatarBg: 'bg-sky-600',
-        initials: 'DG',
-        isOnline: true,
-        isVerified: true,
-      },
-      lastMessage: 'Thank you so much, Alex! That sounds super helpful. See you on Friday at 7:00 PM!',
-      time: '6:43 PM',
-      unread: true,
-      unreadCount: 1,
-      hasUpcomingSession: true,
-      upcomingSessionTopic: 'JavaScript Functions, parameters, and return values',
-      sessionDate: 'Sept 25, 2026',
-    },
-    {
-      id: 'conv-mark-reyes',
-      student: {
-        id: 'std-2',
-        name: 'Mark Reyes',
-        course: 'BS Computer Science · 2nd Year',
-        school: 'Bestlink College of the Philippines',
-        avatarBg: 'bg-teal-600',
-        initials: 'MR',
-        isOnline: false,
-        isVerified: true,
-      },
-      lastMessage: 'You: Remember to verify the time complexity of the tree traversal.',
-      time: '3:20 PM',
-      unread: false,
-      unreadCount: 0,
-      hasUpcomingSession: false,
-      upcomingSessionTopic: null,
-      sessionDate: null,
-    },
-    {
-      id: 'conv-sofia-garcia',
-      student: {
-        id: 'std-3',
-        name: 'Sofia Garcia',
-        course: 'BS Information Technology · 4th Year',
-        school: 'Bestlink College of the Philippines',
-        avatarBg: 'bg-purple-600',
-        initials: 'SG',
-        isOnline: true,
-        isVerified: true,
-      },
-      lastMessage: 'Sofia: The responsive UI component looks great on mobile! Thanks for the guidance.',
-      time: 'Yesterday',
-      unread: false,
-      unreadCount: 0,
-      hasUpcomingSession: false,
-      upcomingSessionTopic: null,
-      sessionDate: null,
-    },
-  ];
-
-  const baseList = conversations && conversations.length > 0 ? conversations : defaultConversations;
-  const threadList = liveConversations.length > 0 ? [...liveConversations, ...baseList] : baseList;
+  const threadList = liveConversations.length > 0 ? liveConversations : (conversations || []);
 
   const filteredThreads = threadList.filter((thread) => {
     if (!searchQuery.trim()) return true;

@@ -84,106 +84,18 @@ export default function SessionsScreen({
     };
   }, []);
 
-  // Default seed sessions if none passed
-  const defaultSessions = [
-    {
-      id: 'session-conf-102',
-      status: 'confirmed',
-      mentor: {
-        id: 'mentor-2',
-        name: 'Maria Clara',
-        specialization: 'Data Structures & Algorithms',
-        rating: 4.8,
-        sessionsCount: 38,
-        isVerified: true,
-        rate: '₱250.00 / hr',
-        hourlyRate: 250,
-        totalFee: 250,
-        downPayment: 125,
-        remainingBalance: 125,
-        paymentStatus: 'downpayment_verified',
-        paymentChannel: 'GCash',
-        referenceNumber: '9021841029381',
-        avatarBg: 'bg-emerald-600',
-        initials: 'MC'
-      },
-      date: '2026-09-22',
-      time: '6:00 PM – 7:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      topic: 'Binary Search Trees, Traversal Algorithms & Balancing',
-      submittedAt: 'Sept 19 at 4:15 PM'
-    },
-    {
-      id: 'session-req-101',
-      status: 'pending',
-      mentor: {
-        id: 'mentor-1',
-        name: 'Alex Santos',
-        specialization: 'Web Development Mentor',
-        rating: 4.9,
-        sessionsCount: 24,
-        isVerified: true,
-        rate: '₱250.00 / hr',
-        hourlyRate: 250,
-        totalFee: 250,
-        downPayment: 125,
-        remainingBalance: 125,
-        paymentStatus: 'downpayment_submitted',
-        paymentChannel: 'GCash',
-        referenceNumber: '1092837465012',
-        avatarBg: 'bg-sky-600',
-        initials: 'AS'
-      },
-      date: '2026-09-25',
-      time: '7:00 PM – 8:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      topic: 'JavaScript Functions, parameters, and return values',
-      submittedAt: 'Today at 7:30 PM'
-    },
-    {
-      id: 'session-comp-103',
-      status: 'completed',
-      mentor: {
-        id: 'mentor-3',
-        name: 'Carlos Reyes',
-        specialization: 'UI/UX Design & Figma Systems',
-        rating: 5.0,
-        sessionsCount: 45,
-        isVerified: true,
-        rate: '₱200.00 / hr',
-        hourlyRate: 200,
-        totalFee: 200,
-        downPayment: 100,
-        remainingBalance: 0,
-        paymentStatus: 'fully_paid',
-        paymentChannel: 'BPI Bank',
-        referenceNumber: '8839201948572',
-        avatarBg: 'bg-purple-600',
-        initials: 'CR'
-      },
-      date: '2026-09-18',
-      time: '5:00 PM – 6:00 PM',
-      duration: '60 min',
-      format: 'Online',
-      topic: 'Mobile-first Wireframing and Auto Layout in Figma',
-      ratingGiven: 5,
-      studyNotes: 'Focus on 8pt grid systems, touch targets >= 44px, and atomic component structure.'
-    }
-  ];
-
-  const baseList = sessions && sessions.length > 0 ? sessions : defaultSessions;
-  const allSessions = liveSessions.length > 0 ? [...liveSessions, ...baseList] : baseList;
+  const allSessions = liveSessions.length > 0 ? liveSessions : (sessions || []);
 
   // Format readable date
   const getReadableDate = (iso) => {
-    if (!iso) return 'Friday, Sept 25, 2026';
-    if (iso === '2026-09-25') return 'Friday, Sept 25, 2026';
-    if (iso === '2026-09-22') return 'Tuesday, Sept 22, 2026';
-    if (iso === '2026-09-21') return 'Monday, Sept 21, 2026';
-    if (iso === '2026-09-18') return 'Friday, Sept 18, 2026';
-    return iso;
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return iso;
+    }
   };
 
   // Base segment lists

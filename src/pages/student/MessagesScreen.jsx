@@ -60,75 +60,7 @@ export default function MessagesScreen({
     };
   }, []);
 
-  // Default seed conversations
-  const defaultConversations = [
-    {
-      id: 'conv-alex-santos',
-      mentor: {
-        id: 'mentor-1',
-        name: 'Alex Santos',
-        specialization: 'Web Development Mentor',
-        rating: 4.9,
-        sessionsCount: 24,
-        isVerified: true,
-        isOnline: true,
-        rate: '₱250.00 / hr',
-        avatarBg: 'bg-sky-600',
-        initials: 'AS'
-      },
-      lastMessage: 'Hi! Are you ready for our session tomorrow?',
-      time: '6:42 PM',
-      unread: true,
-      unreadCount: 1,
-      hasUpcomingSession: true,
-      upcomingSessionTopic: 'JavaScript Functions, parameters, and return values'
-    },
-    {
-      id: 'conv-maria-clara',
-      mentor: {
-        id: 'mentor-2',
-        name: 'Maria Clara',
-        specialization: 'Data Structures & Algorithms',
-        rating: 4.8,
-        sessionsCount: 38,
-        isVerified: true,
-        isOnline: true,
-        rate: '₱250.00 / hr',
-        avatarBg: 'bg-emerald-600',
-        initials: 'MC'
-      },
-      lastMessage: 'You: Thank you for the feedback on BST balancing!',
-      time: '3:15 PM',
-      unread: false,
-      unreadCount: 0,
-      hasUpcomingSession: true,
-      upcomingSessionTopic: 'Binary Search Trees and Traversals'
-    },
-    {
-      id: 'conv-carlos-reyes',
-      mentor: {
-        id: 'mentor-3',
-        name: 'Carlos Reyes',
-        specialization: 'UI/UX Design & Figma Systems',
-        rating: 5.0,
-        sessionsCount: 45,
-        isVerified: true,
-        isOnline: false,
-        rate: '₱200.00 / hr',
-        avatarBg: 'bg-purple-600',
-        initials: 'CR'
-      },
-      lastMessage: "Let's review your wireframe components in Figma during our next call.",
-      time: 'Yesterday',
-      unread: false,
-      unreadCount: 0,
-      hasUpcomingSession: false,
-      upcomingSessionTopic: null
-    }
-  ];
-
-  const baseList = conversations && conversations.length > 0 ? conversations : defaultConversations;
-  const threadList = liveConversations.length > 0 ? [...liveConversations, ...baseList] : baseList;
+  const threadList = liveConversations.length > 0 ? liveConversations : (conversations || []);
 
   const filteredThreads = threadList.filter((thread) => {
     if (!searchQuery.trim()) return true;
