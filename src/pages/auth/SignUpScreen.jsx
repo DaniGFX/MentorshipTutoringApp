@@ -90,6 +90,7 @@ export default function SignUpScreen({
           role: profile?.account_type || role,
           fullName: cleanFullName,
           email: cleanEmail,
+          isNewAccount: true,
         });
       }
     } catch (err) {

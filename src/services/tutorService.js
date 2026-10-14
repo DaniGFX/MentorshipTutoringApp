@@ -254,6 +254,42 @@ export const tutorService = {
       return { data: null, error: { message: err.message } };
     }
   },
+
+  /**
+   * Sets or updates subjects offered by a mentor.
+   * @param {string} tutorId
+   * @param {Array<string | { subject_name: string, category?: string }>} subjects
+   * @returns {Promise<{ success: boolean, error: any }>}
+   */
+  async setTutorSubjects(tutorId, subjects = []) {
+    try {
+      if (!tutorId) throw new Error('tutorId is required');
+
+      // Remove existing subjects for clean sync
+      await supabase.from('tutor_subjects').delete().eq('tutor_id', tutorId);
+
+      if (subjects && subjects.length > 0) {
+        const rows = subjects.map((subj) => {
+          const name = typeof subj === 'string' ? subj : subj.subject_name;
+          const category = typeof subj === 'object' && subj.category ? subj.category : 'Technology';
+          return {
+            tutor_id: tutorId,
+            subject_name: name,
+            category: category,
+            grade_level: 'both',
+          };
+        });
+
+        const { error: insertError } = await supabase.from('tutor_subjects').insert(rows);
+        if (insertError) throw insertError;
+      }
+
+      return { success: true, error: null };
+    } catch (err) {
+      console.error('[tutorService.setTutorSubjects Error]:', err.message);
+      return { success: false, error: { message: err.message } };
+    }
+  },
 };
 
 export default tutorService;

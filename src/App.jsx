@@ -28,6 +28,8 @@ import AvailabilityScreen from './pages/mentor/AvailabilityScreen.jsx';
 import LoginScreen from './pages/auth/LoginScreen.jsx';
 import SignUpScreen from './pages/auth/SignUpScreen.jsx';
 import SplashScreen from './pages/auth/SplashScreen.jsx';
+import StudentProfileSetup from './pages/student/StudentProfileSetup.jsx';
+import MentorSetupScreen from './pages/mentor/MentorSetupScreen.jsx';
 import { authService } from './services/authService.js';
 
 export default function App() {
@@ -52,8 +54,16 @@ export default function App() {
   const [viewingMentorNotifications, setViewingMentorNotifications] = useState(false);
   const [viewingMentorNotificationSettings, setViewingMentorNotificationSettings] = useState(false);
   const [viewingMentorAvailability, setViewingMentorAvailability] = useState(false);
-  const [authView, setAuthView] = useState('login'); // 'login' | 'signup' | null
+  const [authView, setAuthView] = useState('login'); // 'login' | 'signup' | 'student-setup' | 'mentor-setup' | null
   const [showSplash, setShowSplash] = useState(true);
+
+  // Helper to check whether essential academic onboarding fields are present
+  const isProfileComplete = (profile) => {
+    if (!profile) return false;
+    const hasCourse = Boolean(profile.course_program && profile.course_program.trim());
+    const hasYear = Boolean(profile.year_level && profile.year_level.trim());
+    return hasCourse && hasYear;
+  };
 
   // Restore authenticated Supabase session on app launch
   useEffect(() => {
@@ -63,10 +73,13 @@ export default function App() {
         if (user) {
           setCurrentUser(user);
           setCurrentUserProfile(profile);
-          if (profile?.account_type) {
-            setUserRole(profile.account_type);
+          const role = profile?.account_type || 'student';
+          setUserRole(role);
+          if (!isProfileComplete(profile)) {
+            setAuthView(role === 'mentor' ? 'mentor-setup' : 'student-setup');
+          } else {
+            setAuthView(null);
           }
-          setAuthView(null);
         }
       } catch (err) {
         console.error('[App] Session restore error:', err);
@@ -296,9 +309,8 @@ export default function App() {
           onLogin={(creds) => {
             if (creds?.user) setCurrentUser(creds.user);
             if (creds?.profile) setCurrentUserProfile(creds.profile);
-            if (creds?.role) {
-              setUserRole(creds.role);
-            }
+            const role = creds?.role || creds?.profile?.account_type || 'student';
+            setUserRole(role);
             setActiveTab('home');
             setActiveBookingMentor(null);
             setViewingMentorProfile(null);
@@ -316,7 +328,12 @@ export default function App() {
             setViewingMentorNotifications(false);
             setViewingMentorNotificationSettings(false);
             setViewingMentorAvailability(false);
-            setAuthView(null);
+
+            if (!isProfileComplete(creds?.profile)) {
+              setAuthView(role === 'mentor' ? 'mentor-setup' : 'student-setup');
+            } else {
+              setAuthView(null);
+            }
           }}
           onNavigateToSignUp={() => setAuthView('signup')}
           onForgotPassword={() => alert('Password reset instructions sent to your email.')}
@@ -332,11 +349,54 @@ export default function App() {
           onSignUp={(userData) => {
             if (userData?.user) setCurrentUser(userData.user);
             if (userData?.profile) setCurrentUserProfile(userData.profile);
-            if (userData?.role) setUserRole(userData.role);
+            const role = userData?.role || 'student';
+            setUserRole(role);
+            // Route new registrations directly to profile setup before granting dashboard access
+            setAuthView(role === 'mentor' ? 'mentor-setup' : 'student-setup');
+          }}
+          onNavigateToLogin={() => setAuthView('login')}
+        />
+      </div>
+    );
+  }
+
+  if (authView === 'student-setup') {
+    return (
+      <div className="max-w-md mx-auto min-h-screen bg-slate-50 shadow-2xl relative">
+        <StudentProfileSetup
+          currentUser={currentUser}
+          currentProfile={currentUserProfile}
+          onComplete={(updatedProfile) => {
+            if (updatedProfile) setCurrentUserProfile(updatedProfile);
             setActiveTab('home');
             setAuthView(null);
           }}
-          onNavigateToLogin={() => setAuthView('login')}
+          onSkip={(updatedProfile) => {
+            if (updatedProfile) setCurrentUserProfile(updatedProfile);
+            setActiveTab('home');
+            setAuthView(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (authView === 'mentor-setup') {
+    return (
+      <div className="max-w-md mx-auto min-h-screen bg-slate-50 shadow-2xl relative">
+        <MentorSetupScreen
+          currentUser={currentUser}
+          currentProfile={currentUserProfile}
+          onComplete={(updatedProfile) => {
+            if (updatedProfile) setCurrentUserProfile(updatedProfile);
+            setActiveTab('home');
+            setAuthView(null);
+          }}
+          onSkip={(updatedProfile) => {
+            if (updatedProfile) setCurrentUserProfile(updatedProfile);
+            setActiveTab('home');
+            setAuthView(null);
+          }}
         />
       </div>
     );
