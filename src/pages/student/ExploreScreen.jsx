@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { tutorService } from '../../services/tutorService.js';
 
 export default function ExploreScreen({ onNavigateTab, onBookSession, onViewMentorProfile }) {
   // Search query state
@@ -37,8 +38,33 @@ export default function ExploreScreen({ onNavigateTab, onBookSession, onViewMent
     'Data Analytics'
   ];
 
-  // Comprehensive Mentor Directory Data (100% Paid Mentors with GCash / Bank details)
-  const mentorsData = [
+  // Live Mentors State from Supabase
+  const [mentors, setMentors] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLiveMentors() {
+      setIsLoading(true);
+      try {
+        const { data } = await tutorService.getTutors();
+        if (isMounted && data && data.length > 0) {
+          setMentors(data);
+        }
+      } catch (err) {
+        console.error('[ExploreScreen] Error fetching mentors from Supabase:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    fetchLiveMentors();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Comprehensive Mentor Directory Data (Curated fallback mentors)
+  const defaultMentors = [
     {
       id: 'mentor-1',
       name: 'Alex Santos',
@@ -214,9 +240,13 @@ export default function ExploreScreen({ onNavigateTab, onBookSession, onViewMent
     return count;
   }, [filters]);
 
+  const activeMentors = useMemo(() => {
+    return mentors.length > 0 ? mentors : defaultMentors;
+  }, [mentors, defaultMentors]);
+
   // Filtered Mentors List
   const filteredMentors = useMemo(() => {
-    return mentorsData.filter((mentor) => {
+    return activeMentors.filter((mentor) => {
       // 1. Text Query Filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -257,12 +287,12 @@ export default function ExploreScreen({ onNavigateTab, onBookSession, onViewMent
 
       return true;
     });
-  }, [mentorsData, searchQuery, selectedCategory, filters]);
+  }, [activeMentors, searchQuery, selectedCategory, filters]);
 
   // Recommended Mentors (high rating and matched interests)
   const recommendedMentors = useMemo(() => {
-    return mentorsData.filter((m) => m.id === 'mentor-1' || m.id === 'mentor-2');
-  }, [mentorsData]);
+    return activeMentors.slice(0, 3);
+  }, [activeMentors]);
 
   // Modal Handlers
   const handleOpenFilterModal = () => {

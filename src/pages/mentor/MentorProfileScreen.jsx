@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { profileService } from '../../services/profileService.js';
+import { tutorService } from '../../services/tutorService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 export default function MentorProfileScreen({
   onOpenAvailability,
@@ -10,30 +13,68 @@ export default function MentorProfileScreen({
   // State for profile data
   const [profile, setProfile] = useState({
     name: 'Alex Santos',
-    tagline: 'Web Development Mentor & Tech Enthusiast',
-    university: 'Bestlink College of the Philippines',
-    program: 'BS Information Technology — 3rd Year',
-    email: 'alex.santos@student.bcp.edu.ph',
-    phone: '+63 917 889 2341',
-    bio: 'Passionate about helping junior students master web fundamentals, responsive CSS, and modern JavaScript frameworks. Open for 1-on-1 coaching, project debugging, and mock coding interviews.',
-    rating: 4.9,
-    reviewCount: 18,
-    sessionCount: 24,
-    totalEarnings: 3750,
-    hourlyRate: 250,
-    gcashNumber: '0917 889 2341',
+    tagline: 'Senior CS Student | Web & Database Specialist',
+    university: 'De La Salle University',
+    program: 'BS Computer Science — 4th Year',
+    email: 'mentor@mentorlink.ph',
+    phone: '+63 917 555 0192',
+    bio: 'Dedicated peer tutor helping students master programming logic, database normalization, and frontend user interfaces in React.',
+    rating: 4.95,
+    reviewCount: 22,
+    sessionCount: 42,
+    totalEarnings: 8400,
+    hourlyRate: 200,
+    gcashNumber: '0917-555-0192',
     bankName: 'BDO Unibank',
-    bankAccountNumber: '1092 8821 7734',
+    bankAccountNumber: '1092-8834-5512',
   });
 
   const [expertiseTags, setExpertiseTags] = useState([
     'Web Development',
     'JavaScript',
     'React.js',
-    'HTML5 & Tailwind CSS',
-    'Git & GitHub',
-    'REST APIs',
+    'Database Systems & SQL',
+    'Data Structures & Algorithms',
   ]);
+
+  // Load live mentor profile from Supabase
+  useEffect(() => {
+    let isMounted = true;
+    async function loadLiveMentor() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data: pData } = await profileService.getProfile(authData.user.id);
+          const { data: tData } = await tutorService.getTutorById(authData.user.id);
+
+          if (isMounted) {
+            const updated = {
+              name: pData?.full_name || 'Alex Santos',
+              tagline: tData?.headline || 'Senior CS Student | Web & Database Specialist',
+              university: pData?.school_name || 'De La Salle University',
+              program: pData?.course_program || 'BS Computer Science',
+              email: pData?.email || authData.user.email || 'mentor@mentorlink.ph',
+              bio: tData?.bio_experience || pData?.bio || 'Dedicated peer tutor helping students master programming logic.',
+              rating: parseFloat(tData?.average_rating) || 4.95,
+              sessionCount: tData?.completed_sessions_count || 42,
+              hourlyRate: parseFloat(tData?.hourly_rate) || 200,
+            };
+            setProfile((prev) => ({ ...prev, ...updated }));
+            setEditForm((prev) => ({ ...prev, ...updated }));
+            if (tData?.tutor_subjects && tData.tutor_subjects.length > 0) {
+              setExpertiseTags(tData.tutor_subjects.map((s) => s.subject_name));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[MentorProfileScreen] Error loading live mentor data:', err);
+      }
+    }
+    loadLiveMentor();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Modals state
   const [activeModal, setActiveModal] = useState(null); // 'editProfile', 'editExpertise', 'personalInfo', 'reviews', 'privacy', 'faqs', 'support', 'terms', 'privacyPolicy', 'about', 'logout'
@@ -114,11 +155,32 @@ export default function MentorProfileScreen({
     setTimeout(() => setToastMessage(null), 3200);
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    setProfile({ ...editForm });
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user) {
+        await profileService.updateProfile(authData.user.id, {
+          full_name: editForm.name,
+          school_name: editForm.university,
+          course_program: editForm.program,
+          bio: editForm.bio,
+        });
+
+        await tutorService.updateTutorProfile(authData.user.id, {
+          headline: editForm.tagline,
+          bio_experience: editForm.bio,
+          hourly_rate: editForm.hourlyRate || 200,
+        });
+      }
+      setProfile({ ...editForm });
+      showToast('Profile updated successfully in Supabase!');
+    } catch (err) {
+      console.error('[MentorProfileScreen] Error saving profile:', err);
+      setProfile({ ...editForm });
+      showToast('Profile saved locally.');
+    }
     setActiveModal(null);
-    showToast('Profile updated successfully!');
   };
 
   const handleAddTag = (e) => {

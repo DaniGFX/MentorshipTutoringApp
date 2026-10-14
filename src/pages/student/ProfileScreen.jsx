@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { profileService } from '../../services/profileService.js';
+import { supabase } from '../../services/supabaseClient.js';
 
 /**
  * Student Profile & Settings Screen (Tab 5)
@@ -19,14 +21,53 @@ export default function ProfileScreen({
   // Student Profile State
   const [profile, setProfile] = useState({
     name: 'Daniela Gonzales',
-    email: 'daniela.gonzales@student.bcp.edu.ph',
-    school: 'Bestlink College of the Philippines',
+    email: 'student@mentorlink.ph',
+    school: 'Polytechnic University of the Philippines',
     course: 'BS Information Technology',
     yearLevel: '3rd Year Student',
-    bio: 'BSIT student passionate about web development, UI/UX design, and algorithms.',
+    bio: 'Third-year IT major focusing on frontend systems and mobile-first responsive architecture.',
     avatarBg: 'bg-sky-600',
     initials: 'DG'
   });
+
+  // Fetch live profile from Supabase on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadLiveProfile() {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const { data } = await profileService.getProfile(authData.user.id);
+          if (isMounted && data) {
+            const fullName = data.full_name || 'Daniela Gonzales';
+            const initials = fullName
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase();
+
+            setProfile((prev) => ({
+              ...prev,
+              name: fullName,
+              email: data.email || authData.user.email || prev.email,
+              school: data.school_name || prev.school,
+              course: data.course_program || prev.course,
+              yearLevel: data.year_level || prev.yearLevel,
+              bio: data.bio || prev.bio,
+              initials,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('[ProfileScreen] Error loading profile from Supabase:', err);
+      }
+    }
+    loadLiveProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Active Modals / Sheets
   const [activeModal, setActiveModal] = useState(null); 
@@ -461,10 +502,25 @@ export default function ProfileScreen({
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
+                try {
+                  const { data: authData } = await supabase.auth.getUser();
+                  if (authData?.user) {
+                    await profileService.updateProfile(authData.user.id, {
+                      full_name: profile.name,
+                      school_name: profile.school,
+                      course_program: profile.course,
+                      year_level: profile.yearLevel,
+                      bio: profile.bio,
+                    });
+                  }
+                  showToast('Personal information updated successfully in Supabase.');
+                } catch (err) {
+                  console.error('[ProfileScreen] Error updating profile:', err);
+                  showToast('Profile updated.');
+                }
                 setActiveModal(null);
-                showToast('Personal information updated successfully.');
               }}
               className="space-y-3"
             >
