@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import logoImg from '../../assets/logo.png';
+import { authService } from '../../services/authService.js';
 
 export default function LoginScreen({
   onLogin,
@@ -22,22 +23,7 @@ export default function LoginScreen({
     return () => clearTimeout(timer);
   }, []);
 
-  const STATIC_ACCOUNTS = [
-    {
-      email: 'student@mentorlink.ph',
-      password: 'student123',
-      role: 'student',
-      name: 'Daniela Gonzales'
-    },
-    {
-      email: 'mentor@mentorlink.ph',
-      password: 'mentor123',
-      role: 'mentor',
-      name: 'Alex Santos'
-    }
-  ];
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -54,25 +40,33 @@ export default function LoginScreen({
     }
 
     setIsLoading(true);
-    // Simulate quick authentication & verify credentials
-    setTimeout(() => {
-      setIsLoading(false);
-      const matched = STATIC_ACCOUNTS.find(
-        (acc) => acc.email.toLowerCase() === cleanEmail && acc.password === cleanPassword
-      );
 
-      if (matched) {
-        if (onLogin) {
-          onLogin({
-            email: matched.email,
-            role: matched.role,
-            name: matched.name
-          });
-        }
-      } else {
-        setErrorMessage('Invalid email or password. Please use the designated student or mentor credentials.');
+    try {
+      const { user, profile, error } = await authService.signIn({
+        email: cleanEmail,
+        password: cleanPassword,
+      });
+
+      if (error) {
+        setErrorMessage(error.message);
+        setIsLoading(false);
+        return;
       }
-    }, 350);
+
+      if (onLogin) {
+        onLogin({
+          user,
+          profile,
+          email: profile?.email || cleanEmail,
+          role: profile?.account_type || 'student',
+          name: profile?.full_name || cleanEmail.split('@')[0],
+        });
+      }
+    } catch (err) {
+      setErrorMessage(err.message || 'An unexpected error occurred during sign in.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -219,55 +213,6 @@ export default function LoginScreen({
 
         </form>
 
-        {/* Demo Accounts Reference Card for Easy Testing */}
-        <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-left space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Demo Accounts
-            </span>
-            <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
-              Tap to auto-fill
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {/* Student Tile */}
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('student@mentorlink.ph');
-                setPassword('student123');
-                setErrorMessage('');
-              }}
-              className="p-2.5 rounded-xl bg-white border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 text-left transition-all active:scale-95 group shadow-2xs"
-            >
-              <div className="flex items-center gap-1.5 font-bold text-slate-800 group-hover:text-sky-700">
-                <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                <span>Student</span>
-              </div>
-              <p className="text-[10px] text-slate-600 font-mono truncate mt-1">student@mentorlink.ph</p>
-              <p className="text-[10px] text-slate-400 font-mono mt-0.5">student123</p>
-            </button>
-
-            {/* Mentor Tile */}
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('mentor@mentorlink.ph');
-                setPassword('mentor123');
-                setErrorMessage('');
-              }}
-              className="p-2.5 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 text-left transition-all active:scale-95 group shadow-2xs"
-            >
-              <div className="flex items-center gap-1.5 font-bold text-slate-800 group-hover:text-emerald-700">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Mentor</span>
-              </div>
-              <p className="text-[10px] text-slate-600 font-mono truncate mt-1">mentor@mentorlink.ph</p>
-              <p className="text-[10px] text-slate-400 font-mono mt-0.5">mentor123</p>
-            </button>
-          </div>
-        </div>
 
         {/* Divider: Line - Or - Line */}
         <div className="flex items-center my-4">

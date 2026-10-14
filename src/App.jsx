@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import HomeScreen from './pages/student/HomeScreen.jsx';
 import ExploreScreen from './pages/student/ExploreScreen.jsx';
 import BookSessionScreen from './pages/student/BookSessionScreen.jsx';
@@ -28,10 +28,14 @@ import AvailabilityScreen from './pages/mentor/AvailabilityScreen.jsx';
 import LoginScreen from './pages/auth/LoginScreen.jsx';
 import SignUpScreen from './pages/auth/SignUpScreen.jsx';
 import SplashScreen from './pages/auth/SplashScreen.jsx';
+import { authService } from './services/authService.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [userRole, setUserRole] = useState('student'); // 'student' | 'mentor'
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState(null);
+  const [isAuthRestoring, setIsAuthRestoring] = useState(true);
   const [activeBookingMentor, setActiveBookingMentor] = useState(null);
   const [viewingMentorProfile, setViewingMentorProfile] = useState(null);
   const [pendingReviewBooking, setPendingReviewBooking] = useState(null);
@@ -50,6 +54,39 @@ export default function App() {
   const [viewingMentorAvailability, setViewingMentorAvailability] = useState(false);
   const [authView, setAuthView] = useState('login'); // 'login' | 'signup' | null
   const [showSplash, setShowSplash] = useState(true);
+
+  // Restore authenticated Supabase session on app launch
+  useEffect(() => {
+    async function restoreSession() {
+      try {
+        const { user, profile } = await authService.getCurrentSession();
+        if (user) {
+          setCurrentUser(user);
+          setCurrentUserProfile(profile);
+          if (profile?.account_type) {
+            setUserRole(profile.account_type);
+          }
+          setAuthView(null);
+        }
+      } catch (err) {
+        console.error('[App] Session restore error:', err);
+      } finally {
+        setIsAuthRestoring(false);
+      }
+    }
+    restoreSession();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await authService.signOut();
+    } catch (e) {
+      console.error('[App] Logout error:', e);
+    }
+    setCurrentUser(null);
+    setCurrentUserProfile(null);
+    setAuthView('login');
+  };
 
   // Student sessions state (Pending, Confirmed, Completed)
   const [studentSessions, setStudentSessions] = useState([
@@ -257,26 +294,28 @@ export default function App() {
       <div className="max-w-md mx-auto min-h-screen bg-slate-50 shadow-2xl relative">
         <LoginScreen
           onLogin={(creds) => {
+            if (creds?.user) setCurrentUser(creds.user);
+            if (creds?.profile) setCurrentUserProfile(creds.profile);
             if (creds?.role) {
               setUserRole(creds.role);
-              setActiveTab('home');
-              setActiveBookingMentor(null);
-              setViewingMentorProfile(null);
-              setPendingReviewBooking(null);
-              setViewingSessionDetails(null);
-              setViewingConfirmedSession(null);
-              setActiveClassroomSession(null);
-              setViewingCompletedSession(null);
-              setActiveChatMentor(null);
-              setViewingLearningProgress(false);
-              setViewingStudentProfile(null);
-              setActiveMentorChatStudent(null);
-              setViewingMentorSessionDetails(null);
-              setViewingMentorCompletedSession(null);
-              setViewingMentorNotifications(false);
-              setViewingMentorNotificationSettings(false);
-              setViewingMentorAvailability(false);
             }
+            setActiveTab('home');
+            setActiveBookingMentor(null);
+            setViewingMentorProfile(null);
+            setPendingReviewBooking(null);
+            setViewingSessionDetails(null);
+            setViewingConfirmedSession(null);
+            setActiveClassroomSession(null);
+            setViewingCompletedSession(null);
+            setActiveChatMentor(null);
+            setViewingLearningProgress(false);
+            setViewingStudentProfile(null);
+            setActiveMentorChatStudent(null);
+            setViewingMentorSessionDetails(null);
+            setViewingMentorCompletedSession(null);
+            setViewingMentorNotifications(false);
+            setViewingMentorNotificationSettings(false);
+            setViewingMentorAvailability(false);
             setAuthView(null);
           }}
           onNavigateToSignUp={() => setAuthView('signup')}
@@ -291,7 +330,10 @@ export default function App() {
       <div className="max-w-md mx-auto min-h-screen bg-slate-50 shadow-2xl relative">
         <SignUpScreen
           onSignUp={(userData) => {
+            if (userData?.user) setCurrentUser(userData.user);
+            if (userData?.profile) setCurrentUserProfile(userData.profile);
             if (userData?.role) setUserRole(userData.role);
+            setActiveTab('home');
             setAuthView(null);
           }}
           onNavigateToLogin={() => setAuthView('login')}
@@ -522,9 +564,7 @@ export default function App() {
           <ProfileScreen
             onOpenLearningProgress={() => setViewingLearningProgress(true)}
             onViewSessionHistory={() => setActiveTab('sessions')}
-            onLogout={() => {
-              setAuthView('login');
-            }}
+            onLogout={handleLogout}
           />
         ) : userRole === 'mentor' && viewingMentorNotificationSettings ? (
           <MentorNotificationSettingsScreen
@@ -682,7 +722,7 @@ export default function App() {
               setViewingMentorAvailability(false);
               setActiveTab('sessions');
             }}
-            onLogout={() => setAuthView('login')}
+            onLogout={handleLogout}
           />
         ) : (
           <>

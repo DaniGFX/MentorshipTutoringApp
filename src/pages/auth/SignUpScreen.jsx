@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import logoImg from '../../assets/logo.png';
+import { authService } from '../../services/authService.js';
 
 export default function SignUpScreen({
   onSignUp,
@@ -14,6 +15,7 @@ export default function SignUpScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successNotice, setSuccessNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -25,15 +27,19 @@ export default function SignUpScreen({
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessNotice('');
 
-    if (!fullName.trim()) {
+    const cleanFullName = fullName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanFullName) {
       setErrorMessage('Please enter your full name.');
       return;
     }
-    if (!email.trim()) {
+    if (!cleanEmail) {
       setErrorMessage('Please enter your email address.');
       return;
     }
@@ -55,17 +61,42 @@ export default function SignUpScreen({
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+
+    try {
+      const { user, session, profile, error } = await authService.signUp({
+        fullName: cleanFullName,
+        email: cleanEmail,
+        password,
+        role,
+      });
+
+      if (error) {
+        setErrorMessage(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // If Supabase project requires email confirmation
+      if (!session && user && !user.confirmed_at) {
+        setSuccessNotice('Account created! Please check your email to confirm your account before signing in.');
+        setIsLoading(false);
+        return;
+      }
+
       if (onSignUp) {
         onSignUp({
-          fullName,
-          email,
-          role,
-          password
+          user,
+          profile,
+          role: profile?.account_type || role,
+          fullName: cleanFullName,
+          email: cleanEmail,
         });
       }
-    }, 400);
+    } catch (err) {
+      setErrorMessage(err.message || 'An unexpected error occurred during account creation.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -145,6 +176,16 @@ export default function SignUpScreen({
             </button>
           </div>
         </div>
+
+        {/* Success Notice if any */}
+        {successNotice && (
+          <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+            <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{successNotice}</span>
+          </div>
+        )}
 
         {/* Error Alert if any */}
         {errorMessage && (
