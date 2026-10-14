@@ -17,7 +17,10 @@ export const tutorService = {
   async getTutors({ search = '', category = 'All', minRating = 0 } = {}) {
     try {
       // 1. Query Supabase tutor_profiles with relational joins
-      const { data, error } = await supabase
+      let data = null;
+      let error = null;
+
+      const primaryQuery = await supabase
         .from('tutor_profiles')
         .select(`
           tutor_id,
@@ -32,7 +35,7 @@ export const tutorService = {
           years_experience,
           profile_visibility,
           show_email,
-          profiles:tutor_id (
+          profiles:profiles!tutor_profiles_tutor_id_fkey (
             id,
             full_name,
             email,
@@ -52,9 +55,31 @@ export const tutorService = {
         `)
         .eq('profile_visibility', true);
 
-      if (error) {
-        console.warn('[tutorService.getTutors notice]:', error.message);
-        return { data: [], error: { message: error.message } };
+      if (!primaryQuery.error && primaryQuery.data) {
+        data = primaryQuery.data;
+      } else {
+        // Resilient fallback if PostgREST relational schema cache encounters disambiguation issue
+        console.warn('[tutorService.getTutors notice]: falling back to two-stage profile resolution:', primaryQuery.error?.message);
+        const { data: rawTutors, error: tutorErr } = await supabase
+          .from('tutor_profiles')
+          .select('*')
+          .eq('profile_visibility', true);
+
+        if (tutorErr || !rawTutors || rawTutors.length === 0) {
+          return { data: [], error: tutorErr };
+        }
+
+        const tutorIds = rawTutors.map((t) => t.tutor_id);
+        const [{ data: profs }, { data: subjs }] = await Promise.all([
+          supabase.from('profiles').select('*').in('id', tutorIds),
+          supabase.from('tutor_subjects').select('*').in('tutor_id', tutorIds),
+        ]);
+
+        data = rawTutors.map((t) => ({
+          ...t,
+          profiles: (profs || []).find((p) => p.id === t.tutor_id) || {},
+          tutor_subjects: (subjs || []).filter((s) => s.tutor_id === t.tutor_id),
+        }));
       }
 
       if (!data || data.length === 0) {
@@ -129,19 +154,47 @@ export const tutorService = {
     try {
       if (!tutorId) throw new Error('tutorId is required');
 
-      const { data, error } = await supabase
+      const primary = await supabase
         .from('tutor_profiles')
         .select(`
           *,
-          profiles:tutor_id (*),
+          profiles:profiles!tutor_profiles_tutor_id_fkey (*),
           tutor_subjects (*),
           tutor_availability (*)
         `)
         .eq('tutor_id', tutorId)
         .maybeSingle();
 
-      if (error) throw error;
-      return { data, error: null };
+      if (!primary.error && primary.data) {
+        return { data: primary.data, error: null };
+      }
+
+      // Fallback if PostgREST relational schema cache encounters an issue
+      const { data: tutor, error: tutorErr } = await supabase
+        .from('tutor_profiles')
+        .select('*')
+        .eq('tutor_id', tutorId)
+        .maybeSingle();
+
+      if (tutorErr || !tutor) {
+        return { data: null, error: tutorErr || { message: 'Mentor not found' } };
+      }
+
+      const [{ data: prof }, { data: subjects }, { data: avail }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', tutorId).maybeSingle(),
+        supabase.from('tutor_subjects').select('*').eq('tutor_id', tutorId),
+        supabase.from('tutor_availability').select('*').eq('tutor_id', tutorId),
+      ]);
+
+      return {
+        data: {
+          ...tutor,
+          profiles: prof || {},
+          tutor_subjects: subjects || [],
+          tutor_availability: avail || [],
+        },
+        error: null,
+      };
     } catch (err) {
       console.error('[tutorService.getTutorById Error]:', err.message);
       return { data: null, error: { message: err.message } };
